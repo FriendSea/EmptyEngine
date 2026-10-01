@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Version>0.3.2</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Graphics\EmptyEngine.Graphics.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>0.3.1</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- World モジュールへ内部 API を公開する。 -->
+    <InternalsVisibleTo Include="EmptyEngine.World" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Storage\EmptyEngine.Storage.csproj" />
+    <PackageReference Include="MessagePack" Version="2.5.301" />
+    <!-- 復元するオブジェクトのコンストラクタ引数を解決する。 -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.3" />
+  </ItemGroup>
+
+</Project>

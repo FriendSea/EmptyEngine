@@ -1,0 +1,39 @@
+@page "/pane/{Name}"
+@rendermode InteractiveServer
+@inherits EditorScreenBase
+
+<div class="editor-root editor-solo" tabindex="0" @ref="Root">
+    <section class="pane pane-grow">
+        @if (EditorPanes.Find(Name) is { } pane)
+        {
+            <DynamicComponent Type="pane" />
+        }
+        else
+        {
+            <div class="panel">
+                <header class="panel-head"><h2>?</h2></header>
+                <p class="hint" style="padding: 8px">
+                    There is no pane named "@Name". Use one of: @(string.Join(" / ", EditorPanes.Names)).
+                </p>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    /// <summary>出すペインの名前（<see cref="EditorPanes.Names"/> のいずれか）</summary>
+    [Parameter] public string? Name { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await AttachScreenAsync(this);
+    }
+
+    /// <summary>この画面が可視になった／フォーカスが戻ったときの通知</summary>
+    [JSInvokable]
+    public Task OnBecameVisible() => RefreshOnBecameVisibleAsync();
+
+    /// <summary>ショートカットキーの通知</summary>
+    [JSInvokable]
+    public Task OnShortcut(string name) => RunShortcutAsync(name);
+}

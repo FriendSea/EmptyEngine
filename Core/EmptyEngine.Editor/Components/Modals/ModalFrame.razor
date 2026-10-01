@@ -1,0 +1,63 @@
+@inherits ObservingComponentBase
+@inject EditorViewModel Editor
+
+<div class="modal-scrim" @onclick="Cancel"></div>
+<div class="modal" @onkeydown="OnKeyDown">
+    <div class="modal-head">@Title</div>
+    <div class="modal-body">
+        @ChildContent
+    </div>
+    <div class="modal-foot">
+        <button class="btn" @onclick="Cancel">Cancel</button>
+        <button class="btn btn-primary" disabled="@(!CanConfirm)" @onclick="Confirm">@ConfirmText</button>
+    </div>
+</div>
+
+@code {
+    /// <summary>見出し</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>確定ボタンの文言</summary>
+    [Parameter] public string ConfirmText { get; set; } = "Select";
+
+    /// <summary>いま確定してよいか（確定ボタンと Enter の可否）</summary>
+    [Parameter] public bool CanConfirm { get; set; }
+
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _suspended;
+
+    /// <remarks>開いている間はソースアセットの取り込みとポーリングの反映を止める。
+    /// 解除は自分が消えるときなので、確定の処理は止まったまま走る。</remarks>
+    protected override void OnInitialized()
+    {
+        Editor.BeginPickerSuspension();
+        _suspended = true;
+    }
+
+    public override void Dispose()
+    {
+        if (_suspended)
+        {
+            _suspended = false;
+            Editor.ResumePickerSuspension();
+        }
+
+        base.Dispose();
+    }
+
+    private Task Confirm() => CanConfirm ? OnConfirm.InvokeAsync() : Task.CompletedTask;
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+
+    private Task OnKeyDown(KeyboardEventArgs e) => e.Key switch
+    {
+        "Enter" => Confirm(),
+        "Escape" => Cancel(),
+        _ => Task.CompletedTask,
+    };
+}

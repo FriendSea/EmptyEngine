@@ -1,0 +1,10 @@
+@inherits AuthoringInspectorBase
+
+@foreach (FieldViewModel field in Authoring.Fields.Snapshot)
+{
+    <FieldEditor @key="field" Field="field" />
+}
+
+@code {
+    protected override void OnAuthoringBound() => ObserveCollection(Authoring.Fields);
+}

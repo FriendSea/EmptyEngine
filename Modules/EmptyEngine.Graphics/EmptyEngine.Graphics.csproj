@@ -1,0 +1,99 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Version>0.4.3</Version>
+    <!-- 同梱する Basis Universal のライセンスを含める。 -->
+    <PackageLicenseExpression>MIT AND Apache-2.0</PackageLicenseExpression>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Shims\IsExternalInit.cs" Link="Shims\IsExternalInit.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmptyEngine.WebGpu" />
+    <InternalsVisibleTo Include="EmptyEngine.Graphics.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\EmptyEngine.ObjectModel\EmptyEngine.ObjectModel.csproj" />
+  </ItemGroup>
+
+  <!-- ネイティブライブラリの梱包と開発出力への配置。 -->
+  <ItemGroup>
+    <None Remove="runtimes\**\*;buildTransitive\EmptyEngine.Graphics.targets;native\**\*" />
+    <None Include="runtimes\win-x64\native\*.dll"
+          Pack="true"
+          PackagePath="runtimes\win-x64\native">
+      <CopyToOutputDirectory Condition="'$(_IsPacking)' != 'true' and $([MSBuild]::IsOSPlatform('Windows'))">PreserveNewest</CopyToOutputDirectory>
+      <Link Condition="'$(_IsPacking)' != 'true' and $([MSBuild]::IsOSPlatform('Windows'))">%(Filename)%(Extension)</Link>
+    </None>
+    <None Include="runtimes\osx-arm64\native\*.dylib"
+          Pack="true"
+          PackagePath="runtimes\osx-arm64\native">
+      <CopyToOutputDirectory Condition="'$(_IsPacking)' != 'true' and $([MSBuild]::IsOSPlatform('OSX'))">PreserveNewest</CopyToOutputDirectory>
+      <Link Condition="'$(_IsPacking)' != 'true' and $([MSBuild]::IsOSPlatform('OSX'))">%(Filename)%(Extension)</Link>
+    </None>
+    <!-- iOS 向け静的ライブラリを梱包する。 -->
+    <None Include="runtimes\ios-arm64\native\*.a"
+          Pack="true"
+          PackagePath="runtimes\ios-arm64\native" />
+    <None Include="buildTransitive\EmptyEngine.Graphics.targets"
+          Pack="true"
+          PackagePath="buildTransitive\EmptyEngine.Graphics.targets" />
+    <!-- Basis Universal は取得物なので、評価時ではなくパック直前の Target で足す。 -->
+    <None Include="native\**\*"
+          Exclude="native\basis_universal\**;native\basis_universal.cmake"
+          Pack="true"
+          PackagePath="native\" />
+  </ItemGroup>
+
+  <!-- ブラウザ向けビルドがソースを直接コンパイルするため、上流ソースをパッケージへ同梱する。 -->
+  <Target Name="EmptyEnginePackBasisUniversal" BeforeTargets="_GetPackageFiles">
+    <Exec Command="cmake -P &quot;$(MSBuildProjectDirectory)/native/basis_universal.cmake&quot;" />
+    <ItemGroup>
+      <None Include="native\basis_universal\**\*"
+            Exclude="native\basis_universal\.emptyengine-commit"
+            Pack="true"
+            PackagePath="native\basis_universal\" />
+    </ItemGroup>
+  </Target>
+
+  <!-- iOS 用マネージドアセンブリのビルド設定。 -->
+  <PropertyGroup>
+    <EmptyEngineIosFlavorOutput>$(MSBuildProjectDirectory)\bin\ios-flavor\$(Configuration)\</EmptyEngineIosFlavorOutput>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(EmptyEngineIosFlavor)' == 'true'">
+    <DefineConstants>$(DefineConstants);IOS</DefineConstants>
+    <IntermediateOutputPath>$(MSBuildProjectDirectory)\obj\ios-flavor\$(Configuration)\</IntermediateOutputPath>
+    <OutputPath>$(EmptyEngineIosFlavorOutput)</OutputPath>
+  </PropertyGroup>
+
+  <!-- 参照先への iOS 用ビルド設定の伝播を止める。 -->
+  <ItemGroup Condition="'$(EmptyEngineIosFlavor)' == 'true'">
+    <ProjectReference Update="@(ProjectReference)" GlobalPropertiesToRemove="EmptyEngineIosFlavor" />
+  </ItemGroup>
+
+  <!-- パッケージ作成時に iOS 用アセンブリをビルドして梱包する。 -->
+  <Target Name="EmptyEngineBuildIosFlavor" AfterTargets="Build"
+          Condition="'$(EmptyEngineIosFlavor)' != 'true' and '$(_IsPacking)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             Targets="Build"
+             Properties="EmptyEngineIosFlavor=true;Configuration=$(Configuration)" />
+  </Target>
+
+  <ItemGroup>
+    <None Include="$(EmptyEngineIosFlavorOutput)$(TargetFramework)\$(AssemblyName).dll"
+          Pack="true"
+          PackagePath="runtimes\ios-arm64\lib\$(TargetFramework)\$(AssemblyName).dll"
+          Visible="false" />
+  </ItemGroup>
+
+</Project>

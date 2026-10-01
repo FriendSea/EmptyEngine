@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EmptyEditor</title>
+    <base href="/" />
+    <link rel="stylesheet" href="_content/EmptyEngine.Editor/editor.css" />
+    <link rel="icon" href="data:," />
+    <HeadOutlet />
+</head>
+<body>
+    <Routes />
+
+    <div id="components-reconnect-modal" class="reconnect-overlay">
+        <div class="reconnect-card">
+            <div class="spinner"></div>
+            <div class="reconnect-title">Waiting for the editor…</div>
+            <div class="reconnect-hint">It is building or restarting. This screen comes back as soon as it is up.</div>
+        </div>
+    </div>
+
+    <script src="_framework/blazor.web.js"></script>
+    <script type="module" src="_content/EmptyEngine.Editor/editor.js"></script>
+</body>
+</html>

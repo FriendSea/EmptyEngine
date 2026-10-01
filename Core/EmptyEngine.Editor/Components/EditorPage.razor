@@ -1,0 +1,93 @@
+@page "/"
+@rendermode InteractiveServer
+@inherits EditorScreenBase
+@inject EditorStateStore State
+
+<div class="editor-root" tabindex="0" @ref="Root">
+    <div class="panes" id="editor-panes">
+        @for (int i = 0; i < Panes.Length; i++)
+        {
+            PaneLayout pane = Panes[i];
+            bool collapsed = IsCollapsed(pane);
+
+            <section class="pane @(collapsed ? "pane-collapsed" : pane.Grow ? "pane-grow" : "")"
+                     data-pane="@pane.Name" style="@Flex(pane, collapsed)">
+                @if (collapsed)
+                {
+                    <button class="pane-tab" title="Show @pane.Title"
+                            @onclick="() => SetCollapsed(pane, false)">@pane.Title</button>
+                }
+                else
+                {
+                    <DynamicComponent Type="pane.Panel" />
+                    <button class="pane-toggle" title="Hide @pane.Title"
+                            @onclick="() => SetCollapsed(pane, true)">−</button>
+                }
+            </section>
+
+            if (i + 1 < Panes.Length)
+            {
+                <div class="splitter @(CanResize(i) ? "" : "splitter-off")"
+                     data-splitter="@(pane.Grow ? "next" : "prev")"></div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>ペイン 1 枚の並び順の位置づけと既定</summary>
+    private sealed record PaneLayout(string Name, string Title, Type Panel, double Width, bool Grow, bool Collapsed);
+
+    private static readonly PaneLayout[] Panes =
+    [
+        new("hierarchy", "Hierarchy", typeof(HierarchyPanel), 280, false, false),
+        new("inspector", "Inspector", typeof(InspectorPanel), 0, true, false),
+        new("build", "Build", typeof(BuildPanel), 240, false, true),
+    ];
+
+    /// <summary>伸縮ペインが開いているか</summary>
+    private bool HasGrowPane => Panes.Any(pane => pane.Grow && !IsCollapsed(pane));
+
+    protected override void OnInitialized()
+    {
+        Observe(Editor);
+    }
+
+    private bool IsCollapsed(PaneLayout pane) => State.PaneCollapsed(pane.Name) ?? pane.Collapsed;
+
+    private void SetCollapsed(PaneLayout pane, bool collapsed) => State.SetPaneCollapsed(pane.Name, collapsed);
+
+    /// <summary>幅を固定しているペインの flex（伸縮ペインが畳まれている間は残りを分け合う）</summary>
+    private string? Flex(PaneLayout pane, bool collapsed)
+    {
+        if (collapsed || pane.Grow) return null;
+
+        double width = State.PaneWidths.TryGetValue(pane.Name, out double saved) && saved > 80 ? saved : pane.Width;
+        return FormattableString.Invariant($"flex: {(HasGrowPane ? "0 0" : "1 1")} {width}px");
+    }
+
+    /// <summary>その境界が掴むペインを広げられるか</summary>
+    private bool CanResize(int index) =>
+        HasGrowPane && !IsCollapsed(Panes[index].Grow ? Panes[index + 1] : Panes[index]);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await AttachScreenAsync(this);
+    }
+
+    protected override async Task OnScreenAttachedAsync(IJSObjectReference module, object self) =>
+        ScreenDrag = await module.InvokeAsync<IJSObjectReference>("initSplitters", "editor-panes", self);
+
+    /// <summary>スプリッタのドラッグ確定の通知</summary>
+    [JSInvokable]
+    public Task OnPaneResized(Dictionary<string, double> widths) =>
+        Dispatcher.InvokeAsync(() => State.SetPaneWidths(widths));
+
+    /// <summary>可視になった／フォーカスが戻ったときの通知</summary>
+    [JSInvokable]
+    public Task OnBecameVisible() => RefreshOnBecameVisibleAsync();
+
+    /// <summary>ショートカットキーの通知</summary>
+    [JSInvokable]
+    public Task OnShortcut(string name) => RunShortcutAsync(name);
+}

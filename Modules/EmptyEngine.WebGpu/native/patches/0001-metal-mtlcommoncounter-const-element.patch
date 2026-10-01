@@ -1,0 +1,32 @@
+MTLCommonCounter is typedef'd as `NSString * const`, so Dawn's `std::vector<MTLCommonCounter>`
+has a const-qualified element type. That was always ill-formed, but libc++ only began
+rejecting it outright in the Xcode 16.3 SDK, whose std::allocator carries an unconditional
+`static_assert(!is_const<T>::value)` with no escape macro and no _LIBCPP_STD_VER guard. The
+headers ship with the SDK rather than the compiler, so this cannot be worked around by
+swapping in an older clang alone. The parameter is only ever read, so dropping the top-level
+const off the element type is behaviour-preserving.
+
+Drop this patch if the pinned Dawn revision is ever bumped past upstream's own fix.
+
+diff --git a/src/dawn/native/metal/BackendMTL.mm b/src/dawn/native/metal/BackendMTL.mm
+index 8df96d4a..35d1789b 100644
+--- a/src/dawn/native/metal/BackendMTL.mm
++++ b/src/dawn/native/metal/BackendMTL.mm
+@@ -27,6 +27,8 @@
+ 
+ #include "dawn/native/metal/BackendMTL.h"
+ 
++#include <type_traits>
++
+ #include "dawn/common/CoreFoundationRef.h"
+ #include "dawn/common/GPUInfo.h"
+ #include "dawn/common/Log.h"
+@@ -194,7 +196,7 @@ MaybeError GetDevicePCIInfo(id<MTLDevice> device, PCIIDs* ids) {
+ 
+ bool IsGPUCounterSupported(id<MTLDevice> device,
+                            MTLCommonCounterSet counterSetName,
+-                           std::vector<MTLCommonCounter> counterNames)
++                           std::vector<std::remove_const_t<MTLCommonCounter>> counterNames)
+     API_AVAILABLE(macos(10.15), ios(14.0)) {
+     id<MTLCounterSet> counterSet = nil;
+     for (id<MTLCounterSet> set in [device counterSets]) {

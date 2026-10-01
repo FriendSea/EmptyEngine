@@ -1,0 +1,31 @@
+<Project>
+
+  <!-- Bevy 用エディタ拡張のソースを取り込む。 -->
+
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)/Editor/**/*.cs" />
+    <!-- 専用インスペクタの Razor コンポーネントを取り込む。 -->
+    <RazorComponent Include="$(MSBuildThisFileDirectory)Editor/**/*.razor"
+                    Link="Editor/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- ソースアセットの場所を宣言する。 -->
+  <PropertyGroup>
+    <AssetsPath>$(MSBuildThisFileDirectory)Assets</AssetsPath>
+  </PropertyGroup>
+
+  <!-- VSCode webview へのエディタ埋め込みを許可する。 -->
+  <ItemGroup>
+    <EditorFrameAncestor Include="vscode-webview:" />
+    <EditorFrameAncestor Include="vscode-file:" />
+  </ItemGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)../../Core/EmptyEngine.Editor/build/EmptyEngine.Editor.targets" />
+
+  <ItemGroup>
+    <ProjectReference Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../Core/EmptyEngine.Core/EmptyEngine.Core.csproj'))" />
+    <ProjectReference Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../Core/EmptyEngine.Editor/EmptyEngine.Editor.csproj'))" />
+    <ProjectReference Include="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../Modules/EmptyEngine.Storage/EmptyEngine.Storage.csproj'))" />
+  </ItemGroup>
+
+</Project>

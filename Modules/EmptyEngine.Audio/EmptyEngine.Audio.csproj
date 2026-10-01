@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>0.3.2</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmptyEngine.Audio.Tests" />
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\EmptyEngine.ObjectModel\EmptyEngine.ObjectModel.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Generators\EmptyEngine.Generators.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="buildTransitive\EmptyEngine.Audio.targets;native\**\*" />
+    <None Include="buildTransitive\EmptyEngine.Audio.targets"
+          Pack="true"
+          PackagePath="buildTransitive\EmptyEngine.Audio.targets" />
+    <None Include="native\**\*"
+          Pack="true"
+          PackagePath="native\" />
+  </ItemGroup>
+
+  <!-- desktop の音声再生と Vorbis デコードの依存関係。 -->
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.OpenAL" Version="2.23.0" />
+    <PackageReference Include="Silk.NET.OpenAL.Soft.Native" Version="1.23.1" />
+    <PackageReference Include="NVorbis" Version="0.10.5" />
+  </ItemGroup>
+
+</Project>

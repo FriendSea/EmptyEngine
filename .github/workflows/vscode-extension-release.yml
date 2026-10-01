@@ -1,0 +1,104 @@
+# 全プラットフォーム共通の VSIX を生成して GitHub Releases へ公開する。
+# dry run では成果物のみ作成する。バージョンは package.json から取得する。
+
+name: Release VSCode extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build only. Creates no tag and no Release."
+        type: boolean
+        default: false
+
+# タグとリリースの作成。
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: vscode-extension
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 公開タグとの差分を検査するため、履歴全体を取得する。
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: vscode-extension/package-lock.json
+
+      - name: Read release version
+        id: release
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "This run releases v$version."
+
+      # pathspec をリポジトリ基準にするため、ルートで差分を調べる。
+      - name: Check this version has not been released yet
+        if: ${{ !inputs.dry_run }}
+        working-directory: ${{ github.workspace }}
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          watch=(vscode-extension Core/EmptyEngine.Host Core/EmptyEngine.Core/RuntimeLink/SceneWire.cs)
+
+          for path in "${watch[@]}"; do
+            if [ ! -e "$path" ]; then
+              echo "Watched path does not exist: $path" >&2
+              echo "Probably left behind by a move or rename. git diff silently reports missing paths as unchanged, so stopping here." >&2
+              exit 1
+            fi
+          done
+
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG is new."
+            exit 0
+          fi
+
+          if git diff --quiet "$TAG" HEAD -- "${watch[@]}"; then
+            echo "$TAG already exists and the .vsix contents have not changed since. Rebuilding."
+            exit 0
+          fi
+
+          echo "$TAG already exists, but sources that go into the .vsix have changed since." >&2
+          echo "Releasing now would ship different bytes under the same version, making the tag lie." >&2
+          echo "Bump the version in vscode-extension/package.json." >&2
+          git diff --stat "$TAG" HEAD -- "${watch[@]}" >&2
+          exit 1
+
+      - run: npm ci
+
+      - name: Build .vsix
+        run: npm run package
+
+      # dry run でも取得できるよう、成果物を保存する。
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vsix
+          path: vscode-extension/dist/*.vsix
+          if-no-files-found: error
+
+      # タグが今回のコミットを指すよう、--target を指定する。
+      - name: Tag and upload to Release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          gh release upload "$TAG" dist/*.vsix --clobber

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- ゲームが使用するモジュール。 -->
+  <ItemGroup>
+    <PackageReference Include="EmptyEngine.Core" Version="*" />
+    <PackageReference Include="EmptyEngine.ObjectModel" Version="*" />
+    <PackageReference Include="EmptyEngine.World" Version="*" />
+    <PackageReference Include="EmptyEngine.WebGpu" Version="*" />
+    <PackageReference Include="EmptyEngine.Windowing" Version="*" />
+    <PackageReference Include="EmptyEngine.PlayerLoop" Version="*" />
+
+    <PackageReference Include="EmptyEngine.Serialization.Generator" Version="*" />
+    <PackageReference Include="EmptyEngine.TypeCatalog" Version="*" />
+
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.3" />
+  </ItemGroup>
+
+  <!-- エディタ接続用 WebSocket URL を runtimeconfig に出力する。 -->
+  <ItemGroup Condition="'$(EmptyEngineEditorWebSocketUrl)' != ''">
+    <RuntimeHostConfigurationOption Include="EmptyEngine.EditorWebSocketUrl" Value="$(EmptyEngineEditorWebSocketUrl)" />
+  </ItemGroup>
+
+  <!-- エディタ拡張のソースをランタイムのコンパイル対象から除外する。 -->
+  <ItemGroup>
+    <Compile Remove="Editor/**/*.cs" />
+  </ItemGroup>
+
+</Project>

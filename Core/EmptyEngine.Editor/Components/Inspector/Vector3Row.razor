@@ -1,0 +1,16 @@
+<div class="field">
+    <label class="field-name">@Label</label>
+    <div class="field-value row-fields">
+        @foreach (FieldViewModel field in Model.Fields)
+        {
+            <FieldEditor @key="field" Field="field" Compact="true" />
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>見出し（例: "Position"）</summary>
+    [Parameter, EditorRequired] public string Label { get; set; } = null!;
+
+    [Parameter, EditorRequired] public Vector3FieldGroup Model { get; set; } = null!;
+}

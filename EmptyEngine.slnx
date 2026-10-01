@@ -1,0 +1,56 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/Core/">
+    <Project Path="Core/EmptyEngine.Core/EmptyEngine.Core.csproj" />
+    <Project Path="Core/EmptyEngine.Editor/EmptyEngine.Editor.csproj" />
+    <Project Path="Core/EmptyEngine.Host/EmptyEngine.Host.csproj" />
+    <Project Path="Core/EmptyEngine.Tests/EmptyEngine.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Modules/">
+    <Project Path="Modules/EmptyEngine.Audio.Editor/EmptyEngine.Audio.Editor.csproj" />
+    <Project Path="Modules/EmptyEngine.Audio.Tests/EmptyEngine.Audio.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.Audio/EmptyEngine.Audio.csproj" />
+    <Project Path="Modules/EmptyEngine.Collision.Tests/EmptyEngine.Collision.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.Collision/EmptyEngine.Collision.csproj" />
+    <Project Path="Modules/EmptyEngine.Generators/EmptyEngine.Generators.csproj" />
+    <Project Path="Modules/EmptyEngine.Graphics.Editor/EmptyEngine.Graphics.Editor.csproj" />
+    <Project Path="Modules/EmptyEngine.Graphics.Tests/EmptyEngine.Graphics.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.Graphics/EmptyEngine.Graphics.csproj" />
+    <Project Path="Modules/EmptyEngine.Mesh.Editor/EmptyEngine.Mesh.Editor.csproj" />
+    <Project Path="Modules/EmptyEngine.Mesh.Tests/EmptyEngine.Mesh.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.Mesh/EmptyEngine.Mesh.csproj" />
+    <Project Path="Modules/EmptyEngine.Modules.Testing/EmptyEngine.Modules.Testing.csproj" />
+    <Project Path="Modules/EmptyEngine.ObjectModel.Editor/EmptyEngine.ObjectModel.Editor.csproj" />
+    <Project Path="Modules/EmptyEngine.ObjectModel.Tests/EmptyEngine.ObjectModel.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.ObjectModel/EmptyEngine.ObjectModel.csproj" />
+    <Project Path="Modules/EmptyEngine.PlayerLoop.Tests/EmptyEngine.PlayerLoop.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.PlayerLoop/EmptyEngine.PlayerLoop.csproj" />
+    <Project Path="Modules/EmptyEngine.SceneSource.Editor/EmptyEngine.SceneSource.Editor.csproj" />
+    <Project Path="Modules/EmptyEngine.SceneSource.Tests/EmptyEngine.SceneSource.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.Serialization.Editor/EmptyEngine.Serialization.Editor.csproj" />
+    <Project Path="Modules/EmptyEngine.Serialization.Generator.Tests/EmptyEngine.Serialization.Generator.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.Serialization.Generator/EmptyEngine.Serialization.Generator.csproj" />
+    <Project Path="Modules/EmptyEngine.Serialization.Tests/EmptyEngine.Serialization.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.Serialization/EmptyEngine.Serialization.csproj" />
+    <Project Path="Modules/EmptyEngine.Storage.Editor/EmptyEngine.Storage.Editor.csproj" />
+    <Project Path="Modules/EmptyEngine.Storage.Tests/EmptyEngine.Storage.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.Storage/EmptyEngine.Storage.csproj" />
+    <Project Path="Modules/EmptyEngine.Text.Editor/EmptyEngine.Text.Editor.csproj" />
+    <Project Path="Modules/EmptyEngine.Text.Tests/EmptyEngine.Text.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.Text/EmptyEngine.Text.csproj" />
+    <Project Path="Modules/EmptyEngine.TypeCatalog/EmptyEngine.TypeCatalog.csproj" />
+    <Project Path="Modules/EmptyEngine.WebGpu.Editor/EmptyEngine.WebGpu.Editor.csproj" />
+    <Project Path="Modules/EmptyEngine.WebGpu.Tests/EmptyEngine.WebGpu.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.WebGpu/EmptyEngine.WebGpu.csproj" />
+    <Project Path="Modules/EmptyEngine.Windowing.Tests/EmptyEngine.Windowing.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.Windowing/EmptyEngine.Windowing.csproj" />
+    <Project Path="Modules/EmptyEngine.World.Editor/EmptyEngine.World.Editor.csproj" />
+    <Project Path="Modules/EmptyEngine.World.Tests/EmptyEngine.World.Tests.csproj" />
+    <Project Path="Modules/EmptyEngine.World/EmptyEngine.World.csproj" />
+  </Folder>
+  <Project Path="samples/DotnetRuntimeSample/DotnetRuntimeSample.csproj" />
+</Solution>

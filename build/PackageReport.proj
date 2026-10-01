@@ -1,0 +1,31 @@
+<Project>
+
+  <!-- パッケージ候補を評価し、リリース判定用の一覧を TSV に出力する。 -->
+
+  <ItemGroup>
+    <_Candidate Include="$(MSBuildThisFileDirectory)../Core/*/*.csproj" />
+
+    <_Candidate Include="$(MSBuildThisFileDirectory)../Modules/*/*.csproj" />
+
+    <!-- テンプレートパッケージの候補を収集する。 -->
+    <_Candidate Include="$(MSBuildThisFileDirectory)../samples/Templates/*/*.csproj" />
+  </ItemGroup>
+
+  <Target Name="Report">
+    <Error Condition="'$(ReportPath)' == ''" Text="ReportPath を指定してください。" />
+
+    <MSBuild Projects="@(_Candidate)"
+             Targets="EmptyEngineReportPackage"
+             Properties="CustomAfterMicrosoftCommonTargets=$(MSBuildThisFileDirectory)PackageReport.targets"
+             BuildInParallel="true">
+      <Output TaskParameter="TargetOutputs" ItemName="_Report" />
+    </MSBuild>
+
+    <WriteLinesToFile File="$(ReportPath)"
+                      Lines="@(_Report->'%(Identity)&#9;%(PackageVersion)&#9;%(ProjectPath)&#9;%(WatchPaths)&#9;%(PackageKind)&#9;%(TemplateContent)')"
+                      Overwrite="true" />
+
+    <Message Importance="high" Text="配るパッケージ @(_Report->Count()) 件を $(ReportPath) へ書きました。" />
+  </Target>
+
+</Project>

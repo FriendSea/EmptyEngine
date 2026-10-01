@@ -1,0 +1,227 @@
+@inherits ObservingComponentBase
+@inject EditorViewModel Editor
+@inject EditHistoryViewModel History
+@inject IJSRuntime JS
+
+@if (Matches)
+{
+    <div class="tree-row @(IsSelected ? "selected" : "") @_dropClass"
+         style="padding-left:@(Depth * 14 + 4)px"
+         draggable="true"
+         @onclick="Select"
+         @oncontextmenu="OpenMenu"
+         @oncontextmenu:preventDefault="true"
+         @ondragstart="OnDragStart"
+         @ondragend="OnDragEnd"
+         @ondragover="OnDragOver"
+         @ondragover:preventDefault="true"
+         @ondragover:stopPropagation="true"
+         @ondragleave="ClearDrop"
+         @ondrop="OnDrop"
+         @ondrop:preventDefault="true"
+         @ondrop:stopPropagation="true"
+         @onmousemove="OnMouseMove">
+        @if (Node.Children.Count > 0)
+        {
+            <span class="twisty" @onclick:stopPropagation="true" @onclick="ToggleExpanded">@(Node.IsExpanded ? "▾" : "▸")</span>
+        }
+        else
+        {
+            <span class="twisty"></span>
+        }
+
+        <input class="tree-active" type="checkbox" title="Active"
+               checked="@Node.Active"
+               @onchange="SetActive"
+               @onclick:stopPropagation="true" />
+
+        @if (Node.IsSceneRoot)
+        {
+            <span class="marker scene" title="Prefab/scene root (unit of loading)">◈</span>
+        }
+        @if (Node.IsPrefabRoot)
+        {
+            <span class="marker prefab" title="Nested prefab (saved as a reference plus overrides)">◈</span>
+        }
+        <span class="tree-label @(Node.IsSceneRoot ? "root" : "")">@Node.DisplayName</span>
+    </div>
+}
+
+@if (Node.IsExpanded || !string.IsNullOrWhiteSpace(Filter))
+{
+    @* 並べ替え後も同じノードを購読するよう、行を ViewModel に対応付ける。 *@
+    @foreach (HierarchyNodeViewModel child in Node.Children.Snapshot)
+    {
+        <HierarchyNodeRow @key="child" Node="child" Depth="@(Depth + 1)" Filter="@Filter" />
+    }
+}
+
+@if (_menuOpen)
+{
+    <ContextMenu X="_menuX" Y="_menuY" OnClose="() => _menuOpen = false">
+        <MenuAction Label="Undo" Shortcut="Ctrl+Z" Enabled="@History.CanUndo" OnClick="History.Undo" />
+        <MenuAction Label="Redo" Shortcut="Ctrl+Y" Enabled="@History.CanRedo" OnClick="History.Redo" />
+        <MenuSeparator />
+        <MenuAction Label="Add Object" OnClick="Editor.AddObject" />
+        <MenuAction Label="Add Prefab Child…" Enabled="@Editor.CanAddPrefabChild"
+                    Title="Nest the chosen .scene as a child of this object"
+                    OnClick="AddPrefabChild" />
+        <MenuAction Label="Extract Prefab" Enabled="@Editor.CanExtractPrefab"
+                    Title="Extract this object and its children into a new .scene (prefab) and replace them with a nested instance"
+                    OnClick="ExtractPrefab" />
+        <MenuAction Label="Delete" Shortcut="Del" OnClick="Editor.DeleteSelectedObject" />
+        <MenuSeparator />
+        <MenuAction Label="Copy" Shortcut="Ctrl+C" OnClick="Editor.CopySelectedObject" />
+        <MenuAction Label="Paste" Shortcut="Ctrl+V" Enabled="@Editor.CanPasteObject" OnClick="Editor.PasteObject" />
+        <MenuSeparator />
+        <MenuAction Label="Move Up" OnClick="() => Editor.MoveSelectedObject(-1)" />
+        <MenuAction Label="Move Down" OnClick="() => Editor.MoveSelectedObject(1)" />
+        @if (Node.IsSceneRoot)
+        {
+            <MenuSeparator />
+            <MenuAction Label="Unload Scene" OnClick="() => Editor.UnloadScene(Node)" />
+        }
+    </ContextMenu>
+}
+
+@if (_scenes is { } scenes)
+{
+    <PickerDialog TItem="AssetCandidate" Title="Scene" Items="scenes" TextOf="candidate => candidate.DisplayName"
+                  OnCommit="NestPrefab" OnCancel="() => _scenes = null" />
+}
+
+@if (_extracting)
+{
+    <NamePromptDialog Title="Extract Prefab" Label="Prefab name" InitialName="@Node.Name" ConfirmText="Extract"
+                      OnCommit="ExtractPrefabAs" OnCancel="() => _extracting = false" />
+}
+
+@code {
+    /// <summary>この行が受け持つノード</summary>
+    [Parameter, EditorRequired] public HierarchyNodeViewModel Node { get; set; } = null!;
+    [Parameter] public int Depth { get; set; }
+    [Parameter] public string? Filter { get; set; }
+
+    private bool _menuOpen;
+    private IReadOnlyList<AssetCandidate>? _scenes;
+    private bool _extracting;
+    private double _menuX;
+    private double _menuY;
+    private string _dropClass = string.Empty;
+    private DropPosition _dropPosition = DropPosition.Into;
+
+    private bool IsSelected => ReferenceEquals(Editor.SelectedNode, Node);
+
+    private bool Matches => Node.MatchesFilter(Filter, Editor.SelectedNode);
+
+    protected override void OnInitialized()
+    {
+        Observe(Node);
+        ObserveCollection(Node.Children);
+        Observe(Editor);
+        Observe(History);
+    }
+
+    private void Select() => Editor.SelectedNode = Node;
+
+    private void ToggleExpanded() => Editor.SetHierarchyExpanded(Node, !Node.IsExpanded);
+
+    private void SetActive(ChangeEventArgs e)
+    {
+        if (e.Value is bool active)
+            Editor.SetActive(Node, active);
+    }
+
+    private void OpenMenu(MouseEventArgs e)
+    {
+        Editor.SelectedNode = Node;
+        _menuX = e.ClientX;
+        _menuY = e.ClientY;
+        _menuOpen = true;
+    }
+
+    private void AddPrefabChild()
+    {
+        Editor.SelectedNode = Node;
+        if (!Editor.CanAddPrefabChild) return;
+
+        _scenes = Editor.GetSceneCandidates(sceneSourceOnly: true);
+    }
+
+    private void NestPrefab(AssetCandidate chosen)
+    {
+        _scenes = null;
+        _ = Editor.AddPrefabChildAsync(chosen.Key);
+    }
+
+    private void ExtractPrefab()
+    {
+        Editor.SelectedNode = Node;
+        if (!Editor.CanExtractPrefab) return;
+
+        _extracting = true;
+    }
+
+    private void ExtractPrefabAs(string name)
+    {
+        _extracting = false;
+        _ = Editor.ExtractPrefabAsync(name);
+    }
+
+    private void OnDragStart()
+    {
+        Editor.DraggingNode = Node;
+        Editor.SelectedNode = Node;
+    }
+
+    private void OnDragEnd() => Editor.DraggingNode = null;
+
+    private void OnDragOver(DragEventArgs e)
+    {
+        if (FileDrop.IsExternal(e))
+        {
+            _dropPosition = DropPosition.Into;
+            _dropClass = "drop-into";
+            return;
+        }
+
+        if (Editor.DraggingNode is null || ReferenceEquals(Editor.DraggingNode, Node)) return;
+
+        double ratio = e.OffsetY / Math.Max(RowHeight, 1);
+        _dropPosition =
+            ratio < 0.25 ? DropPosition.Before :
+            ratio > 0.75 ? DropPosition.After :
+            DropPosition.Into;
+        _dropClass = _dropPosition switch
+        {
+            DropPosition.Before => "drop-before",
+            DropPosition.After => "drop-after",
+            _ => "drop-into",
+        };
+    }
+
+    private void ClearDrop() => _dropClass = string.Empty;
+
+    private async Task OnDrop(DragEventArgs e)
+    {
+        HierarchyNodeViewModel? source = Editor.DraggingNode;
+        Editor.DraggingNode = null;
+        ClearDrop();
+
+        if (FileDrop.IsExternal(e))
+        {
+            await Editor.DropFilesAsync(await FileDrop.TakeAsync(JS), Node);
+            return;
+        }
+
+        if (source is null || ReferenceEquals(source, Node)) return;
+        Editor.MoveObject(source, Node, _dropPosition);
+    }
+
+    private void OnMouseMove(MouseEventArgs e)
+    {
+        if (e.Buttons == 0 && Editor.DraggingNode is not null) Editor.DraggingNode = null;
+    }
+
+    private const double RowHeight = 22;
+}

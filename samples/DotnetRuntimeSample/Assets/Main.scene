@@ -1,0 +1,125 @@
+{
+  "Id": "b1000000-0000-4000-8000-000000000001",
+  "Name": "Main",
+  "Active": true,
+  "Components": [
+    {
+      "TypeName": "EmptyEngine.ObjectModel.TransformComponent",
+      "Data": {
+        "Matrix": {
+          "M11": 1.0,
+          "M12": 0,
+          "M13": 0,
+          "M14": 0,
+          "M21": 0,
+          "M22": 1.0,
+          "M23": 0,
+          "M24": 0,
+          "M31": 0,
+          "M32": 0,
+          "M33": 1.0,
+          "M34": 0,
+          "M41": 0.0,
+          "M42": 0.0,
+          "M43": 0.0,
+          "M44": 1
+        }
+      }
+    }
+  ],
+  "Children": [
+    {
+      "Id": "b1000000-0000-4000-8000-000000000002",
+      "Name": "Camera",
+      "Active": true,
+      "Components": [
+        {
+          "TypeName": "EmptyEngine.ObjectModel.TransformComponent",
+          "Data": {
+            "Matrix": {
+              "M11": 1.0,
+              "M12": 0,
+              "M13": 0,
+              "M14": 0,
+              "M21": 0,
+              "M22": 1.0,
+              "M23": 0,
+              "M24": 0,
+              "M31": 0,
+              "M32": 0,
+              "M33": 1.0,
+              "M34": 0,
+              "M41": 0.0,
+              "M42": 0.0,
+              "M43": -10.0,
+              "M44": 1
+            }
+          }
+        },
+        {
+          "TypeName": "EmptyEngine.WebGpu.CameraComponent",
+          "Data": {
+            "Projection": 0,
+            "Size": 3,
+            "FieldOfView": 60,
+            "NearPlane": 0.1,
+            "FarPlane": 1000
+          }
+        }
+      ],
+      "Children": []
+    },
+    {
+      "Id": "b1000000-0000-4000-8000-000000000003",
+      "Name": "Spinner",
+      "Active": true,
+      "Components": [
+        {
+          "TypeName": "EmptyEngine.ObjectModel.TransformComponent",
+          "Data": {
+            "Matrix": {
+              "M11": 2.0,
+              "M12": 0,
+              "M13": 0,
+              "M14": 0,
+              "M21": 0,
+              "M22": 2.0,
+              "M23": 0,
+              "M24": 0,
+              "M31": 0,
+              "M32": 0,
+              "M33": 1.0,
+              "M34": 0,
+              "M41": 0.0,
+              "M42": 0.0,
+              "M43": 0.0,
+              "M44": 1
+            }
+          }
+        },
+        {
+          "TypeName": "EmptyEngine.WebGpu.SpriteComponent",
+          "Data": {
+            "Color": {
+              "R": 0.35,
+              "G": 0.72,
+              "B": 1.0,
+              "A": 1.0
+            },
+            "Params": [],
+            "Textures": [],
+            "Asset": "",
+            "Shader": ""
+          }
+        },
+        {
+          "TypeName": "DotnetRuntimeSample.Spinner",
+          "Data": {
+            "DegreesPerSecond": 45
+          }
+        }
+      ],
+      "Children": []
+    }
+  ]
+}

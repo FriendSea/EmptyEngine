@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <DefineConstants>$(DefineConstants);$(AbiTarget)</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)../../EmptyEngine.WebGpu/WebGpuTypes.cs" Link="WebGpuTypes.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../EmptyEngine.WebGpu/WebGpu.cs" Link="WebGpu.cs" />
+  </ItemGroup>
+</Project>

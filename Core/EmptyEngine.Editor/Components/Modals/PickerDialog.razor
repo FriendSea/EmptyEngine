@@ -1,0 +1,132 @@
+@typeparam TItem where TItem : class
+@inherits ObservingComponentBase
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<ModalFrame Title="@Title" ConfirmText="@ConfirmText" CanConfirm="@(_selected is not null)"
+            OnConfirm="Confirm" OnCancel="OnCancel">
+    <input class="filter" type="search" placeholder="Filter" @ref="_search"
+           value="@_filter" @oninput="OnFilter" @onkeydown="OnFilterKeyDown" />
+    <div class="picker-list" @ref="_list">
+        @foreach (TItem item in _shown)
+        {
+            @* 押しても絞り込み欄からフォーカスを奪わない＝続けてキーで操作できる *@
+            <div class="list-row @(ReferenceEquals(_selected, item) ? "selected" : "")"
+                 title="@TextOf(item)"
+                 @onmousedown:preventDefault="true"
+                 @onclick="() => _selected = item"
+                 @ondblclick="() => Commit(item)">@TextOf(item)</div>
+        }
+    </div>
+</ModalFrame>
+
+@code {
+    /// <summary>見出し</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>確定ボタンの文言</summary>
+    [Parameter] public string ConfirmText { get; set; } = "Select";
+
+    /// <summary>候補。開いている間は増減しない</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<TItem> Items { get; set; } = [];
+
+    /// <summary>一覧に出す文字列。絞り込みもこれで行う</summary>
+    [Parameter, EditorRequired] public Func<TItem, string> TextOf { get; set; } = null!;
+
+    /// <summary>選ばれた候補の通知</summary>
+    [Parameter] public EventCallback<TItem> OnCommit { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private IReadOnlyList<TItem> _shown = [];
+    private TItem? _selected;
+    private TItem? _scrolledTo;
+    private string _filter = string.Empty;
+    private ElementReference _search;
+    private ElementReference _list;
+    private IJSObjectReference? _module;
+
+    /// <remarks>開いた時点では先頭を選ぶ。親の描き直しでは選択を動かさない。</remarks>
+    protected override void OnParametersSet()
+    {
+        ApplyFilter();
+        if (IndexOfSelected() < 0) _selected = FirstShown();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 子コンポーネントの描画が終わるまで @ref は未設定。
+        if (_search.Id is null) return;
+
+        if (_module is null)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "/_content/EmptyEngine.Editor/editor.js");
+            await _module.InvokeVoidAsync("holdPickerCaret", _search);
+            await _search.FocusAsync();
+        }
+
+        if (ReferenceEquals(_selected, _scrolledTo)) return;
+
+        _scrolledTo = _selected;
+        if (_selected is not null)
+            await _module.InvokeVoidAsync("scrollPickerSelection", _list);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    /// <remarks>絞り込みを変えたら先頭を選び直す＝打って Enter で一番上に決まる。</remarks>
+    private void OnFilter(ChangeEventArgs e)
+    {
+        _filter = e.Value?.ToString() ?? string.Empty;
+        ApplyFilter();
+        _selected = FirstShown();
+    }
+
+    /// <remarks>Enter は <see cref="ModalFrame"/> が確定として受ける。</remarks>
+    private void OnFilterKeyDown(KeyboardEventArgs e)
+    {
+        int step = e.Key switch
+        {
+            "ArrowDown" => 1,
+            "ArrowUp" => -1,
+            _ => 0,
+        };
+        if (step == 0 || _shown.Count == 0) return;
+
+        _selected = _shown[Math.Clamp(IndexOfSelected() + step, 0, _shown.Count - 1)];
+    }
+
+    private void ApplyFilter() =>
+        _shown = string.IsNullOrWhiteSpace(_filter)
+            ? Items
+            : [.. Items.Where(item => TextOf(item).Contains(_filter, StringComparison.OrdinalIgnoreCase))];
+
+    private TItem? FirstShown() => _shown.Count > 0 ? _shown[0] : null;
+
+    /// <summary>表示中の候補での選択の位置（無ければ -1）</summary>
+    private int IndexOfSelected()
+    {
+        for (int i = 0; i < _shown.Count; i++)
+        {
+            if (ReferenceEquals(_shown[i], _selected)) return i;
+        }
+
+        return -1;
+    }
+
+    private Task Confirm() => _selected is { } chosen ? OnCommit.InvokeAsync(chosen) : Task.CompletedTask;
+
+    private Task Commit(TItem item)
+    {
+        _selected = item;
+        return OnCommit.InvokeAsync(item);
+    }
+}

@@ -1,0 +1,106 @@
+@inherits ObservingComponentBase
+@inject EditorViewModel Editor
+
+<div class="panel">
+    <header class="panel-head">
+        <h2>Inspector</h2>
+    </header>
+
+    <div class="toolbar">
+        <button class="btn" @onclick="PickAsset"
+                title="Choose an asset to show in the Inspector">Asset…</button>
+        @if (Asset.IsInspecting)
+        {
+            <button class="btn" @onclick="() => Editor.SelectAsset(null)"
+                    title="Stop showing the asset (return to the Hierarchy selection)">Close</button>
+        }
+    </div>
+
+    <div class="inspector-body">
+        @if (Asset.IsInspecting)
+        {
+            <div class="inspector-title">@Asset.Title</div>
+            <div class="inspector-subtitle">
+                <span>@Asset.Hint</span>
+                @if (Asset.IsEditable)
+                {
+                    <button class="btn btn-small" @onclick="Asset.SaveNow">Save</button>
+                }
+                <button class="btn btn-small" disabled="@(!Asset.CanReimport)"
+                        @onclick="() => Asset.ReimportAsync()"
+                        title="Reimport this asset">Reimport</button>
+                @if (Asset.CanCreateVariant)
+                {
+                    <button class="btn btn-small" @onclick="() => Asset.CreateVariantAsync()"
+                            title="Create a variant (.variant) of this scene next to it and load it">Create Variant</button>
+                }
+            </div>
+
+            @if (Asset.Inspected is { } inspected)
+            {
+                <AuthoringCard @key="inspected" Authoring="inspected" CanRemove="false" />
+            }
+        }
+        else if (Editor.SelectedNode is { } selected)
+        {
+            <div class="inspector-title">@selected.Name</div>
+
+            @foreach (AuthoringObjectViewModel component in Editor.SelectedComponents.Snapshot)
+            {
+                <AuthoringCard @key="component" Authoring="component" />
+            }
+
+            <div class="add-component">
+                <button class="btn btn-add" @onclick="OpenComponentPicker">Add Authoring…</button>
+                <button class="btn" disabled="@(!Editor.CanPasteComponent)" @onclick="Editor.PasteComponent"
+                        title="Paste the copied component onto this object">Paste Authoring</button>
+            </div>
+        }
+        else
+        {
+            <p class="empty">Nothing is selected.</p>
+        }
+    </div>
+</div>
+
+@if (_assets is { } assets)
+{
+    <PickerDialog TItem="AssetCandidate" Title="Any asset" Items="assets" TextOf="candidate => candidate.DisplayName"
+                  OnCommit="SelectAsset" OnCancel="() => _assets = null" />
+}
+
+@if (_componentTypes is { } types)
+{
+    <PickerDialog TItem="ComponentTypeOption" Title="Add Component" ConfirmText="Add" Items="types" TextOf="option => option.TypeName"
+                  OnCommit="AddComponent" OnCancel="() => _componentTypes = null" />
+}
+
+@code {
+    private IReadOnlyList<AssetCandidate>? _assets;
+    private IReadOnlyList<ComponentTypeOption>? _componentTypes;
+
+    private AssetInspectorViewModel Asset => Editor.Asset;
+
+    protected override void OnInitialized()
+    {
+        // 選択コレクションは差し替わるため、Editor のプロパティ変更を購読する。
+        Observe(Editor);
+        Observe(Asset);
+    }
+
+    private void PickAsset() => _assets = Editor.GetAssetCandidates(constraintTypeName: null);
+
+    private void SelectAsset(AssetCandidate chosen)
+    {
+        _assets = null;
+        Editor.SelectAsset(chosen.Key);
+    }
+
+    private void OpenComponentPicker() => _componentTypes = Editor.AvailableComponentTypes;
+
+    private void AddComponent(ComponentTypeOption option)
+    {
+        _componentTypes = null;
+        Editor.AddComponent(option);
+    }
+}

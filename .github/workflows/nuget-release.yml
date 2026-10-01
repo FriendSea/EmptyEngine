@@ -1,0 +1,53 @@
+# NuGet パッケージを生成・検証して公開する。
+# PR の検証へ公開権限を渡さないよう、検証専用ワークフローと分離する。
+
+name: Publish NuGet packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "Packages to publish (comma-separated; empty publishes every unpublished package)"
+        required: false
+        default: ""
+
+# Trusted Publishing のポリシーがファイル名を照合するため、改名時にはポリシーも更新する。
+
+permissions:
+  # タグの push に要る。
+  contents: write
+  # OIDC トークンの発行。
+  id-token: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 公開タグとの差分を検査するため、履歴全体を取得する。
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # 入力がシェルコードとして解釈されないよう、環境変数で渡す。
+      - name: Build and verify
+        env:
+          ONLY: ${{ inputs.only }}
+        run: dotnet run build/NuGetRelease.cs -- build --only "$ONLY" --out .artifacts/nuget-release
+
+      # 認証の有効期間をビルドで消費しないよう、公開直前に取得する。
+      - uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      # 検証した成果物をそのまま公開する。
+      - name: Publish
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: dotnet run build/NuGetRelease.cs -- publish --in .artifacts/nuget-release

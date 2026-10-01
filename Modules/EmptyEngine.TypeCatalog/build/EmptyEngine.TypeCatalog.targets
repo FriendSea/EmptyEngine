@@ -1,0 +1,27 @@
+<Project>
+
+  <!-- 型カタログ生成ツールと出力先の既定パス。 -->
+  <PropertyGroup>
+    <EmptyEngineCatalogToolPath Condition="'$(EmptyEngineCatalogToolPath)' == ''">$(MSBuildThisFileDirectory)..\tools\net10.0\any\EmptyEngine.TypeCatalog.dll</EmptyEngineCatalogToolPath>
+    <EmptyEngineCatalogOutputPath Condition="'$(EmptyEngineCatalogOutputPath)' == ''">$(MSBuildProjectDirectory)/.artifacts</EmptyEngineCatalogOutputPath>
+    <!-- 型カタログ生成へ渡すコンパイル参照一覧の出力先。 -->
+    <EmptyEngineCatalogReferencesFile>$(IntermediateOutputPath)EmptyEngineCatalogReferences.txt</EmptyEngineCatalogReferencesFile>
+  </PropertyGroup>
+
+  <Target Name="GenerateTypeCatalog"
+          AfterTargets="Build"
+          Condition="'$(_IsPublishing)' != 'true' and '$(EmptyEngineGenerateCatalog)' != 'false' and '$(DesignTimeBuild)' != 'true'"
+          Inputs="$(TargetPath);$(EmptyEngineCatalogToolPath)"
+          Outputs="$(EmptyEngineCatalogOutputPath)/TypeCatalog.json">
+    <Error Condition="!Exists('$(EmptyEngineCatalogToolPath)')"
+           Text="EmptyEngine catalog tool was not found at '$(EmptyEngineCatalogToolPath)'. Restore EmptyEngine.TypeCatalog or set EmptyEngineCatalogToolPath." />
+    <WriteLinesToFile File="$(EmptyEngineCatalogReferencesFile)"
+                      Lines="@(ReferencePathWithRefAssemblies)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <Exec Command="dotnet &quot;$(EmptyEngineCatalogToolPath)&quot; &quot;$(TargetPath)&quot; &quot;$(EmptyEngineCatalogOutputPath)&quot; &quot;$(EmptyEngineCatalogReferencesFile)&quot;"
+          EnvironmentVariables="EMPTYENGINE_ROSLYN_BINCORE=$(RoslynTargetsPath)/bincore"
+          ContinueOnError="true" />
+  </Target>
+
+</Project>

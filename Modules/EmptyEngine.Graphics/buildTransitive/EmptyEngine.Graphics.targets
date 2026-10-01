@@ -1,0 +1,27 @@
+<Project>
+
+  <!-- ブラウザ向け Basis Universal トランスコーダをアプリへリンクする。 -->
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'browser'">
+    <NativeFileReference Include="$(MSBuildThisFileDirectory)..\native\basis_transcoder.cpp" />
+    <NativeFileReference Include="$(MSBuildThisFileDirectory)..\native\basis_universal\transcoder\basisu_transcoder.cpp" />
+  </ItemGroup>
+
+  <!-- ソース参照のビルドでは Basis Universal を上流から取得する。
+       パッケージにはソースを同梱し取得スクリプトは入れないので、パッケージ利用側では走らない。 -->
+  <Target Name="EmptyEngineFetchBasisUniversal" BeforeTargets="Build"
+          Condition="'$(TargetPlatformIdentifier)' == 'browser' and Exists('$(MSBuildThisFileDirectory)..\native\basis_universal.cmake')">
+    <Exec Command="cmake -P &quot;$(MSBuildThisFileDirectory)../native/basis_universal.cmake&quot;" />
+  </Target>
+
+  <PropertyGroup>
+    <EmccExtraCFlags>$(EmccExtraCFlags) -DBASISD_SUPPORT_KTX2_ZSTD=0 -fno-strict-aliasing</EmccExtraCFlags>
+    <EmccExtraLDFlags>$(EmccExtraLDFlags) -DBASISD_SUPPORT_KTX2_ZSTD=0 -fno-strict-aliasing</EmccExtraLDFlags>
+  </PropertyGroup>
+
+  <!-- iOS 向け Basis Universal の静的ライブラリをアプリへリンクする。 -->
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'ios'">
+    <NativeReference Include="$(MSBuildThisFileDirectory)..\runtimes\ios-arm64\native\libbasisu_transcoder.a"
+                     Kind="Static" ForceLoad="true" IsCxx="true" />
+  </ItemGroup>
+
+</Project>

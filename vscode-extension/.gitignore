@@ -1,0 +1,10 @@
+node_modules
+out
+*.vsix
+
+# 同梱 Host と VSIX の生成先。
+host
+dist
+
+# 公開ツリーの LICENSE を VSIX へ入れるための写し。
+LICENSE

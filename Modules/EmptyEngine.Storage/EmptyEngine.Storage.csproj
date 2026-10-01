@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>0.3.2</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="buildTransitive\EmptyEngine.Storage.targets"
+          Pack="true" PackagePath="buildTransitive\EmptyEngine.Storage.targets" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmptyEngine.Serialization.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Storage.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.World.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,110 @@
+@inherits ObservingComponentBase
+@inject EditorViewModel Editor
+@inject BuildViewModel Build
+@inject ILogger<BuildPanel> Logger
+
+<div class="panel build-panel">
+    <header class="panel-head">
+        <h2>Build</h2>
+    </header>
+
+    <h3>Scenes</h3>
+    <p class="hint">The first scene (▶) is the startup scene. The distribution contains every scene listed here plus the assets they reach.</p>
+    <div class="toolbar">
+        <button class="btn" @onclick="AddSceneToBuild"
+                title="Pick a scene and append it to the deployed scene list">+ Add…</button>
+        <button class="btn" disabled="@(!Editor.BuildScenes.CanRemove)" @onclick="Editor.BuildScenes.RemoveSelected">Remove</button>
+        <button class="btn" disabled="@(!Editor.BuildScenes.CanMove)" @onclick="() => Editor.BuildScenes.Move(-1)" title="Move up (first = startup scene)">↑</button>
+        <button class="btn" disabled="@(!Editor.BuildScenes.CanMove)" @onclick="() => Editor.BuildScenes.Move(1)" title="Move down">↓</button>
+    </div>
+    <div class="list build-list">
+        @foreach (BuildSceneItemViewModel item in Editor.BuildScenes.Items.Snapshot)
+        {
+            <div class="list-row @(ReferenceEquals(Editor.BuildScenes.Selected, item) ? "selected" : "")"
+                 @onclick="() => Editor.BuildScenes.Selected = item">@item.Label</div>
+        }
+    </div>
+
+    <h3>Distribution</h3>
+    @if (Build.Targets.Count == 0)
+    {
+        <p class="hint">
+            No builds are declared in <code>*.Editor.targets</code>.
+            Add <code>&lt;DistributionBuild Include="Windows"&gt;&lt;Command&gt;… -o {output}&lt;/Command&gt;&lt;/DistributionBuild&gt;</code>
+            items and set <code>&lt;BuildWorkingPath&gt;</code> to the directory to run them in, and they can be run from here.
+            In the command, <code>{output}</code> is replaced with the output directory and <code>{assets}</code> with the location of the imported assets.
+        </p>
+    }
+    else
+    {
+        <div class="build-form">
+            <label for="build-target">Build</label>
+            <select id="build-target" value="@Build.SelectedTargetName"
+                    @onchange="e => Build.SelectedTargetName = e.Value?.ToString() ?? string.Empty">
+                @foreach (BuildTarget target in Build.Targets)
+                {
+                    <option value="@target.Name">@target.Name</option>
+                }
+            </select>
+
+            <label for="build-output">Output</label>
+            <div class="build-output">
+                <input id="build-output" class="prompt-input" type="text" value="@Build.OutputDirectory"
+                       title="@Build.OutputDirectory"
+                       @onchange="e => Build.OutputDirectory = e.Value?.ToString() ?? string.Empty" />
+                <button class="btn btn-small" disabled="@(!FolderDialog.IsSupported)"
+                        @onclick="PickOutputAsync" title="Choose a folder">…</button>
+            </div>
+        </div>
+
+        <div class="build-command" title="@Build.CommandPreview">@Build.CommandPreview</div>
+
+        <div class="toolbar">
+            <button class="btn btn-primary" disabled="@(!Build.CanBuild)" @onclick="Build.Start"
+                    title="@(Build.BlockedReason ?? "Import → the command above → deploy reachable assets")">Build</button>
+        </div>
+    }
+
+    <div class="build-status @PhaseClass" title="@Build.Status">@Build.Status</div>
+</div>
+
+@if (_scenes is { } scenes)
+{
+    <PickerDialog TItem="AssetCandidate" Title="Scene" Items="scenes" TextOf="candidate => candidate.DisplayName"
+                  OnCommit="AddScene" OnCancel="() => _scenes = null" />
+}
+
+@code {
+    private IReadOnlyList<AssetCandidate>? _scenes;
+
+    protected override void OnInitialized()
+    {
+        Observe(Editor);
+        Observe(Build);
+        Observe(Editor.BuildScenes);
+        ObserveCollection(Editor.BuildScenes.Items);
+    }
+
+    private void AddSceneToBuild() => _scenes = Editor.GetSceneCandidates(excludeBuildScenes: true);
+
+    private void AddScene(AssetCandidate chosen)
+    {
+        _scenes = null;
+        Editor.BuildScenes.Add(chosen.Key);
+    }
+
+    /// <summary>配布の出力先を OS のフォルダ選択ダイアログで決めさせる</summary>
+    private async Task PickOutputAsync()
+    {
+        if (await FolderDialog.PickAsync("Choose Output Folder",Build.OutputPickerStart, Logger) is { Length: > 0 } picked)
+            Build.OutputDirectory = picked;
+    }
+
+    private string PhaseClass => Build.Phase switch
+    {
+        BuildPhase.Running => "warn",
+        BuildPhase.Succeeded => "ok",
+        BuildPhase.Failed => "err",
+        _ => "off",
+    };
+}

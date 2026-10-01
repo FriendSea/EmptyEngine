@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- モジュールのテストが共有するフィクスチャ。 -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- 生成される ResolveAssetAttribute は internals を見せ合う相手にも生成されている。 -->
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmptyEngine.World.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.SceneSource.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Storage.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Text.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Graphics.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Mesh.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Audio.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Serialization.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.WebGpu.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.assert" Version="2.9.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\..\Core\EmptyEngine.Editor\EmptyEngine.Editor.csproj" />
+    <ProjectReference Include="..\..\Core\EmptyEngine.Tests\EmptyEngine.Tests.csproj" />
+    <ProjectReference Include="..\EmptyEngine.ObjectModel\EmptyEngine.ObjectModel.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Storage\EmptyEngine.Storage.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Storage.Editor\EmptyEngine.Storage.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Serialization\EmptyEngine.Serialization.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Serialization.Editor\EmptyEngine.Serialization.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.World\EmptyEngine.World.csproj" />
+    <ProjectReference Include="..\EmptyEngine.World.Editor\EmptyEngine.World.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Generators\EmptyEngine.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\EmptyEngine.Serialization.Generator\EmptyEngine.Serialization.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

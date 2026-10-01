@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AbiTarget>IOS</AbiTarget></PropertyGroup>
+  <Import Project="../Probe.props" />
+</Project>

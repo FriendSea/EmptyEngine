@@ -1,0 +1,89 @@
+@inherits ObservingComponentBase
+@inject EditorViewModel Editor
+@inject InspectorRegistry Inspectors
+@inject IJSRuntime JS
+@inject ILogger<AuthoringCard> Logger
+
+<div class="authoring-card" @oncontextmenu="OpenMenu" @oncontextmenu:preventDefault="true">
+    <div class="authoring-head">
+        <span class="authoring-name">@Authoring.DisplayName</span>
+        @if (Authoring.MissingInRuntime)
+        {
+            <span class="authoring-missing"
+                  title="The runtime did not return this component, so the editor restored it from its own tree. The runtime has no deserializer for this type (removed, renamed, or not implemented there), so it is not running.">
+                Missing in runtime
+            </span>
+        }
+        @if (Authoring.DefaultsMissing)
+        {
+            <span class="authoring-no-defaults"
+                  title="The catalog tool could not construct this type (its constructor takes injected dependencies), so the type catalog has no defaults. A newly added instance starts with every member zeroed instead of the constructor's values.">
+                No defaults
+            </span>
+        }
+        <div class="authoring-actions">
+            <button class="btn btn-icon" title="Open the source of this type"
+                    disabled="@(Editor.GetComponentSourceLocation(Authoring.Key) is null)"
+                    @onclick="OpenSource">&lt;/&gt;</button>
+            @if (CanRemove)
+            {
+                <button class="btn btn-icon" title="Remove this component" @onclick="Remove">✕</button>
+            }
+        </div>
+    </div>
+
+    @if (_inspector is not null)
+    {
+        <DynamicComponent Type="_inspector" Parameters="_parameters" />
+    }
+</div>
+
+@if (_menuOpen)
+{
+    <ContextMenu X="_menuX" Y="_menuY" OnClose="() => _menuOpen = false">
+        <MenuAction Label="Copy" OnClick="() => Editor.CopyComponent(Authoring)" />
+        <MenuAction Label="Paste" Enabled="@Editor.CanPasteComponent" OnClick="Editor.PasteComponent" />
+    </ContextMenu>
+}
+
+@code {
+    [Parameter, EditorRequired] public AuthoringObjectViewModel Authoring { get; set; } = null!;
+
+    /// <summary>外すボタンを出すか</summary>
+    /// <remarks>オブジェクトに付いたコンポーネントだけが外せる。アセットは付け外しの対象ではない</remarks>
+    [Parameter] public bool CanRemove { get; set; } = true;
+
+    private AuthoringObjectViewModel? _bound;
+    private Type? _inspector;
+    private Dictionary<string, object> _parameters = new();
+    private bool _menuOpen;
+    private double _menuX;
+    private double _menuY;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_bound, Authoring)) return;
+
+        _bound = Authoring;
+        _inspector = Inspectors.Resolve(Authoring.Schema);
+        _parameters = new Dictionary<string, object> { ["Authoring"] = Authoring };
+    }
+
+    private void OpenMenu(MouseEventArgs e)
+    {
+        _menuX = e.ClientX;
+        _menuY = e.ClientY;
+        _menuOpen = true;
+    }
+
+    private void Remove() => Editor.RemoveComponent(Authoring);
+
+    /// <summary>コンポーネント型をカタログに記録された位置でコードエディタに開く</summary>
+    private async Task OpenSource()
+    {
+        if (Editor.GetComponentSourceLocation(Authoring.Key) is not { } source) return;
+
+        if (!await JS.InvokeAsync<bool>("emptyEngineOpenSource", source.Path, source.Line))
+            SourceFileBrowser.OpenInEditor(source.Path, source.Line, Logger);
+    }
+}

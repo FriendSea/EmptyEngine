@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\..\Core\EmptyEngine.Editor\EmptyEngine.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.World\EmptyEngine.World.csproj" />
+    <ProjectReference Include="..\EmptyEngine.ObjectModel\EmptyEngine.ObjectModel.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Serialization.Editor\EmptyEngine.Serialization.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Storage.Editor\EmptyEngine.Storage.Editor.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmptyEngine.Modules.Testing" />
+    <InternalsVisibleTo Include="EmptyEngine.World.Tests" />
+  </ItemGroup>
+
+</Project>

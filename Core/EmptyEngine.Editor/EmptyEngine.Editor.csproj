@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <ItemGroup>
+    <ProjectReference Include="..\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmptyEngine.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Serialization.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Modules.Testing" />
+    <InternalsVisibleTo Include="EmptyEngine.ObjectModel.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.World.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.SceneSource.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.WebGpu.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- エディタ UI と Web ホストのフレームワーク参照。 -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="ConsoleAppFramework" Version="5.7.13" PrivateAssets="all"
+                      IncludeAssets="runtime;build;native;contentfiles;analyzers;buildtransitive" />
+    <!-- 外部操作 API の OpenAPI 文書とリファレンス画面。 -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.17.3" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>0.3.2</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="build\EmptyEngine.Editor.targets" />
+    <None Include="build\EmptyEngine.Editor.targets"
+          Pack="true"
+          PackagePath="build\EmptyEngine.Editor.targets" />
+  </ItemGroup>
+
+</Project>

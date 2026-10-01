@@ -1,0 +1,38 @@
+@inject IJSRuntime JS
+
+<div class="menu-scrim" @onclick="Close" @oncontextmenu="Close" @oncontextmenu:preventDefault="true"></div>
+<div class="context-menu" @ref="_menu" style="left:@Px(X); top:@Px(Y)">
+    <CascadingValue Value="this" IsFixed="true">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>右クリックした画面座標（<c>MouseEventArgs.ClientX</c>）</summary>
+    [Parameter] public double X { get; set; }
+
+    /// <summary>右クリックした画面座標（<c>MouseEventArgs.ClientY</c>）</summary>
+    [Parameter] public double Y { get; set; }
+
+    private ElementReference _menu;
+    private IJSObjectReference? _module;
+    private bool _placed;
+
+    /// <summary>項目を選んだあとの通知</summary>
+    public Task Close() => OnClose.InvokeAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_placed) return;
+        _placed = true;
+
+        _module = await JS.InvokeAsync<IJSObjectReference>("import", "/_content/EmptyEngine.Editor/editor.js");
+        await _module.InvokeVoidAsync("placeMenu", _menu, X, Y);
+    }
+
+    private static string Px(double value) =>
+        FormattableString.Invariant($"{value}px");
+}

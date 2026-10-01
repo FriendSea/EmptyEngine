@@ -1,0 +1,47 @@
+<Project>
+
+  <!-- 上位メジャーのランタイムでの起動を許可する。 -->
+  <PropertyGroup>
+    <RollForward Condition="'$(RollForward)' == ''">Major</RollForward>
+  </PropertyGroup>
+
+  <!-- エディタの宣言を検証し、runtimeconfig.json に出力する。 -->
+  <Target Name="EmptyEngineEditorDeclarations"
+          BeforeTargets="_GenerateRuntimeConfigurationFilesInputCache;GenerateBuildRuntimeConfigurationFiles;GeneratePublishRuntimeConfigurationFiles">
+
+    <!-- ソースアセットの絶対パスを検証する。 -->
+    <Error Condition="'$(AssetsPath)' == ''"
+           Text="AssetsPath is not set. The game's *.Editor.targets must declare it (e.g. &lt;AssetsPath&gt;%24(MSBuildThisFileDirectory)Assets&lt;/AssetsPath&gt;)." />
+    <Error Condition="'$(AssetsPath)' != '' and !$([System.IO.Path]::IsPathRooted('$(AssetsPath)'))"
+           Text="AssetsPath must be absolute (prefix it with %24(MSBuildThisFileDirectory)). The generated editor lives under .artifacts, so a relative path does not point where it reads." />
+
+    <!-- 配布ビルドの作業ディレクトリを検証する。 -->
+    <Error Condition="'@(DistributionBuild)' != '' and '$(BuildWorkingPath)' == ''"
+           Text="BuildWorkingPath is required when DistributionBuild is declared: it is where the build command runs (e.g. &lt;BuildWorkingPath&gt;%24(MSBuildThisFileDirectory)&lt;/BuildWorkingPath&gt;)." />
+    <Error Condition="'$(BuildWorkingPath)' != '' and !$([System.IO.Path]::IsPathRooted('$(BuildWorkingPath)'))"
+           Text="BuildWorkingPath must be absolute (prefix it with %24(MSBuildThisFileDirectory))." />
+
+    <ItemGroup>
+      <RuntimeHostConfigurationOption Include="EmptyEngine.AssetsRoot" Value="$(AssetsPath)" />
+      <RuntimeHostConfigurationOption Include="EmptyEngine.BuildWorkingDirectory"
+                                      Value="$(BuildWorkingPath)"
+                                      Condition="'$(BuildWorkingPath)' != ''" />
+
+      <!-- 配布ビルドの名前・コマンド・事前配布設定を出力する。 -->
+      <RuntimeHostConfigurationOption Include="EmptyEngine.Builds"
+                                      Value="@(DistributionBuild, ';')"
+                                      Condition="'@(DistributionBuild)' != ''" />
+      <RuntimeHostConfigurationOption Include="EmptyEngine.Build.%(DistributionBuild.Identity).Command"
+                                      Value="%(DistributionBuild.Command)"
+                                      Condition="'@(DistributionBuild)' != ''" />
+      <RuntimeHostConfigurationOption Include="EmptyEngine.Build.%(DistributionBuild.Identity).DeployBeforeBuild"
+                                      Value="%(DistributionBuild.DeployBeforeBuild)"
+                                      Condition="'@(DistributionBuild)' != '' and '%(DistributionBuild.DeployBeforeBuild)' != ''" />
+
+      <RuntimeHostConfigurationOption Include="EmptyEngine.FrameAncestors"
+                                      Value="@(EditorFrameAncestor, ';')"
+                                      Condition="'@(EditorFrameAncestor)' != ''" />
+    </ItemGroup>
+  </Target>
+
+</Project>

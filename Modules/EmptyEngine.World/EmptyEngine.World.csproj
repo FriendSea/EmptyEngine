@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>0.3.2</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmptyEngine.Serialization.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Modules.Testing" />
+    <InternalsVisibleTo Include="EmptyEngine.World.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.SceneSource.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Storage.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Mesh.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.Text.Tests" />
+    <InternalsVisibleTo Include="EmptyEngine.WebGpu.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\EmptyEngine.ObjectModel\EmptyEngine.ObjectModel.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Serialization\EmptyEngine.Serialization.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Storage\EmptyEngine.Storage.csproj" />
+    <PackageReference Include="MessagePack" Version="2.5.301" />
+  </ItemGroup>
+
+</Project>

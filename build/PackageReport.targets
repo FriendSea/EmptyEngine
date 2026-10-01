@@ -1,0 +1,35 @@
+<Project>
+
+  <!-- リリース判定用のパッケージ情報と変更監視パスを収集する。 -->
+  <Target Name="EmptyEngineReportPackage" Returns="@(_EmptyEnginePackageReport)">
+
+    <ItemGroup>
+      <_EEAnalyzerRef Include="@(ProjectReference)" Condition="'%(ProjectReference.OutputItemType)' == 'Analyzer'" />
+
+      <_EEWatch Include="$(MSBuildProjectDirectory)" />
+      <_EEWatch Include="@(_EEAnalyzerRef->'%(RootDir)%(Directory)')" />
+
+      <!-- プロジェクト外から取り込むソースを監視対象に追加する。 -->
+      <_EEWatch Include="@(Compile->'%(FullPath)')"
+                Condition="!$([System.String]::new('%(Compile.FullPath)').StartsWith($([MSBuild]::EnsureTrailingSlash('$(MSBuildProjectDirectory)'))))" />
+
+      <!-- テンプレートのソースを監視対象に追加する。 -->
+      <_EEWatch Include="$(EmptyEngineTemplateContent)" Condition="'$(EmptyEngineTemplateContent)' != ''" />
+    </ItemGroup>
+
+    <!-- 収集したパッケージ情報を出力する。 -->
+    <ItemGroup>
+      <_EmptyEnginePackageReport Include="$(PackageId)" Condition="'$(IsPackable)' != 'false'">
+        <PackageVersion>$(PackageVersion)</PackageVersion>
+        <ProjectPath>$(MSBuildProjectFullPath)</ProjectPath>
+        <WatchPaths>@(_EEWatch, '|')</WatchPaths>
+
+        <!-- リリース前検証に使うパッケージ種別を設定する。 -->
+        <PackageKind>$(PackageType)</PackageKind>
+        <PackageKind Condition="'$(PackAsTool)' == 'true'">Tool</PackageKind>
+        <TemplateContent>$(EmptyEngineTemplateContent)</TemplateContent>
+      </_EmptyEnginePackageReport>
+    </ItemGroup>
+  </Target>
+
+</Project>

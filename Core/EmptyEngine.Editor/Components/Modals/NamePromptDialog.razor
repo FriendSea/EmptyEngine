@@ -1,0 +1,46 @@
+@inherits ObservingComponentBase
+
+<ModalFrame Title="@Title" ConfirmText="@ConfirmText" CanConfirm="@CanConfirm"
+            OnConfirm="Confirm" OnCancel="OnCancel">
+    <label class="prompt-label">@Label</label>
+    <input class="prompt-input" type="text" value="@_name" @ref="_input"
+           @oninput="e => _name = e.Value?.ToString() ?? string.Empty" />
+</ModalFrame>
+
+@code {
+    /// <summary>見出し</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>入力欄の見出し</summary>
+    [Parameter] public string Label { get; set; } = string.Empty;
+
+    /// <summary>開いたときに入っている名前</summary>
+    [Parameter] public string InitialName { get; set; } = string.Empty;
+
+    /// <summary>確定ボタンの文言</summary>
+    [Parameter] public string ConfirmText { get; set; } = "OK";
+
+    /// <summary>入力された名前の通知（前後の空白は落として渡す）</summary>
+    [Parameter] public EventCallback<string> OnCommit { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string _name = string.Empty;
+    private ElementReference _input;
+    private bool _focused;
+
+    private bool CanConfirm => !string.IsNullOrWhiteSpace(_name);
+
+    protected override void OnInitialized() => _name = InitialName;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 子コンポーネントの描画が終わるまで @ref は未設定。
+        if (_focused || _input.Id is null) return;
+
+        _focused = true;
+        await _input.FocusAsync();
+    }
+
+    private Task Confirm() => CanConfirm ? OnCommit.InvokeAsync(_name.Trim()) : Task.CompletedTask;
+}

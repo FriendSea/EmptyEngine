@@ -1,0 +1,33 @@
+<Project>
+  <PropertyGroup>
+    <!-- NuGet パッケージの共通メタデータ。 -->
+    <Authors>FriendSea</Authors>
+    <Copyright>Copyright (c) 2026 FriendSea</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Editor'))">
+    <!-- エディタモジュールと対になるランタイムプロジェクトを特定する。 -->
+    <_EmptyEngineRuntimeHalf>$(MSBuildProjectName.Substring(0, $([MSBuild]::Subtract($(MSBuildProjectName.Length), 7))))</_EmptyEngineRuntimeHalf>
+    <_EmptyEngineRuntimeHalfProject>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '..', '$(_EmptyEngineRuntimeHalf)', '$(_EmptyEngineRuntimeHalf).csproj'))</_EmptyEngineRuntimeHalfProject>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="Exists('$(_EmptyEngineRuntimeHalfProject)')">
+    <Version>$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(_EmptyEngineRuntimeHalfProject)')), '(?s)^.*?&lt;Version&gt;([^&lt;]+)&lt;/Version&gt;.*$', '$1'))</Version>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- ワールド座標系と対応するコンパイル定数を設定する。 -->
+    <EmptyEngineHandedness Condition="'$(EmptyEngineHandedness)' == ''">LeftHanded</EmptyEngineHandedness>
+    <DefineConstants Condition="'$(EmptyEngineHandedness)' == 'LeftHanded'">$(DefineConstants);EMPTYENGINE_LEFT_HANDED</DefineConstants>
+    <DefineConstants Condition="'$(EmptyEngineHandedness)' == 'RightHanded'">$(DefineConstants);EMPTYENGINE_RIGHT_HANDED</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- コードスタイル検査と XML ドキュメント生成を有効にする。 -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+  </PropertyGroup>
+</Project>

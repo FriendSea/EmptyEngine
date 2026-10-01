@@ -1,0 +1,34 @@
+[package]
+name = "bevy_runtime_sample"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# シーンの読み書きとウィンドウ・スプライト描画。
+bevy = { version = "0.14", default-features = false, features = [
+    "bevy_scene",
+    "bevy_winit",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_sprite",
+    # Play/Edit モード（States/NextState/in_state）に使う。
+    "bevy_state",
+    # 取り込んだ画像のデコード。
+    "png",
+    "jpeg",
+    "bmp",
+    "webp",
+] }
+# RON シーンの解析。
+ron = "0.8"
+serde = "1"
+# エディタとの WebSocket 同期。
+tungstenite = "0.24"
+
+# カタログ生成でも同じ型を登録するため、ランタイムと feature を揃える。
+[build-dependencies]
+bevy = { version = "0.14", default-features = false, features = [
+    "bevy_scene",
+    "bevy_sprite",
+] }
+ron = "0.8"

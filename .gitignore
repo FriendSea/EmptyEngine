@@ -1,0 +1,17 @@
+.artifacts
+.claude
+obj
+bin
+# Distribution のソースを除外しないよう、配布ディレクトリ名を限定する。
+dist/
+dist-*/
+ImportedAssets
+dist-web
+*.pak
+target
+.cargo
+*.log
+.DS_Store
+*.trx
+# ビルド時に上流から取得する（native/basis_universal.cmake）。
+Modules/EmptyEngine.Graphics/native/basis_universal/

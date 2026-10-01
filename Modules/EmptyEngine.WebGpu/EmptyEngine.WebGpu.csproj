@@ -1,0 +1,90 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>0.3.2</Version>
+    <!-- 同梱する Dawn と Abseil のライセンスを含める。 -->
+    <PackageLicenseExpression>MIT AND BSD-3-Clause AND Apache-2.0</PackageLicenseExpression>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmptyEngine.WebGpu.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\EmptyEngine.ObjectModel\EmptyEngine.ObjectModel.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Graphics\EmptyEngine.Graphics.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Mesh\EmptyEngine.Mesh.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Generators\EmptyEngine.Generators.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="buildTransitive\EmptyEngine.WebGpu.targets;native\**\*;runtimes\**\*" />
+    <None Include="buildTransitive\EmptyEngine.WebGpu.targets"
+          Pack="true"
+          PackagePath="buildTransitive\EmptyEngine.WebGpu.targets" />
+    <None Include="native\**\*"
+          Pack="true"
+          PackagePath="native\" />
+    <None Remove="licenses\**\*" />
+    <None Include="licenses\**\*"
+          Pack="true"
+          PackagePath="licenses\" />
+  </ItemGroup>
+
+  <!-- Dawn ネイティブライブラリの梱包と開発出力への配置。 -->
+  <ItemGroup>
+    <None Include="runtimes\win-x64\native\*.dll"
+          Pack="true"
+          PackagePath="runtimes\win-x64\native">
+      <CopyToOutputDirectory Condition="'$(_IsPacking)' != 'true' and $([MSBuild]::IsOSPlatform('Windows'))">PreserveNewest</CopyToOutputDirectory>
+      <Link Condition="'$(_IsPacking)' != 'true' and $([MSBuild]::IsOSPlatform('Windows'))">%(Filename)%(Extension)</Link>
+    </None>
+    <None Include="runtimes\osx-arm64\native\*.dylib"
+          Pack="true"
+          PackagePath="runtimes\osx-arm64\native">
+      <CopyToOutputDirectory Condition="'$(_IsPacking)' != 'true' and $([MSBuild]::IsOSPlatform('OSX'))">PreserveNewest</CopyToOutputDirectory>
+      <Link Condition="'$(_IsPacking)' != 'true' and $([MSBuild]::IsOSPlatform('OSX'))">%(Filename)%(Extension)</Link>
+    </None>
+    <None Include="runtimes\ios-arm64\native\*.a"
+          Pack="true"
+          PackagePath="runtimes\ios-arm64\native" />
+  </ItemGroup>
+
+  <!-- iOS 用マネージドアセンブリのビルド設定。 -->
+  <PropertyGroup>
+    <EmptyEngineIosFlavorOutput>$(MSBuildProjectDirectory)\bin\ios-flavor\$(Configuration)\</EmptyEngineIosFlavorOutput>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(EmptyEngineIosFlavor)' == 'true'">
+    <DefineConstants>$(DefineConstants);IOS</DefineConstants>
+    <IntermediateOutputPath>$(MSBuildProjectDirectory)\obj\ios-flavor\$(Configuration)\</IntermediateOutputPath>
+    <OutputPath>$(EmptyEngineIosFlavorOutput)</OutputPath>
+  </PropertyGroup>
+
+  <!-- 参照先への iOS 用ビルド設定の伝播を止める。 -->
+  <ItemGroup Condition="'$(EmptyEngineIosFlavor)' == 'true'">
+    <ProjectReference Update="@(ProjectReference)" GlobalPropertiesToRemove="EmptyEngineIosFlavor" />
+  </ItemGroup>
+
+  <!-- パッケージ作成時に iOS 用アセンブリをビルドして梱包する。 -->
+  <Target Name="EmptyEngineBuildIosFlavor" AfterTargets="Build"
+          Condition="'$(EmptyEngineIosFlavor)' != 'true' and '$(_IsPacking)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             Targets="Build"
+             Properties="EmptyEngineIosFlavor=true;Configuration=$(Configuration)" />
+  </Target>
+
+  <ItemGroup>
+    <None Include="$(EmptyEngineIosFlavorOutput)$(TargetFramework)\$(AssemblyName).dll"
+          Pack="true"
+          PackagePath="runtimes\ios-arm64\lib\$(TargetFramework)\$(AssemblyName).dll"
+          Visible="false" />
+  </ItemGroup>
+
+</Project>

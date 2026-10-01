@@ -1,0 +1,89 @@
+@inherits ObservingComponentBase
+
+<ModalFrame Title="@Title" ConfirmText="@ConfirmText" CanConfirm="@CanConfirm"
+            OnConfirm="Confirm" OnCancel="OnCancel">
+    <label class="prompt-label">Name</label>
+    <input class="prompt-input" type="text" value="@_name" @ref="_input"
+           @oninput="e => _name = e.Value?.ToString() ?? string.Empty" />
+    <label class="prompt-label">Location</label>
+    <input class="filter" type="search" placeholder="Filter folders"
+           value="@_filter" @oninput="OnFilter" />
+    <div class="picker-list">
+        @foreach (string folder in _shown)
+        {
+            <div class="list-row @(_folder == folder ? "selected" : "")"
+                 @onclick="() => _folder = folder">@Describe(folder)</div>
+        }
+    </div>
+    <div class="path" title="@Preview">@Preview</div>
+</ModalFrame>
+
+@code {
+    /// <summary>見出し</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>選べるフォルダ（アセットルート基準の相対パス）</summary>
+    [Parameter] public IReadOnlyList<string> Folders { get; set; } = [];
+
+    /// <summary>開いたときに入っている名前</summary>
+    [Parameter] public string InitialName { get; set; } = string.Empty;
+
+    /// <summary>付ける拡張子（<see cref="Preview"/> にも出る）</summary>
+    [Parameter] public string Extension { get; set; } = string.Empty;
+
+    /// <summary>確定ボタンの文言</summary>
+    [Parameter] public string ConfirmText { get; set; } = "Create";
+
+    /// <summary>選ばれたフォルダと名前の通知</summary>
+    [Parameter] public EventCallback<SavePathResult> OnCommit { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private IReadOnlyList<string> _all = [];
+    private IReadOnlyList<string> _shown = [];
+    private string _folder = string.Empty;
+    private string _name = string.Empty;
+    private string _filter = string.Empty;
+    private ElementReference _input;
+    private bool _focused;
+
+    private bool CanConfirm => !string.IsNullOrWhiteSpace(_name);
+
+    /// <summary>確定したら作られるパス</summary>
+    private string Preview =>
+        (string.IsNullOrEmpty(_folder) ? "Assets/" : $"Assets/{_folder}/") + _name.Trim() + Extension;
+
+    protected override void OnInitialized()
+    {
+        _all = Folders.Count > 0 ? Folders : [string.Empty];
+        _folder = _all[0];
+        _name = InitialName;
+        ApplyFilter();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // 子コンポーネントの描画が終わるまで @ref は未設定。
+        if (_focused || _input.Id is null) return;
+
+        _focused = true;
+        await _input.FocusAsync();
+    }
+
+    /// <summary>フォルダの表示名（ルートは "Assets" と出す）</summary>
+    private static string Describe(string folder) => string.IsNullOrEmpty(folder) ? "Assets" : "Assets/" + folder;
+
+    private void OnFilter(ChangeEventArgs e)
+    {
+        _filter = e.Value?.ToString() ?? string.Empty;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter() =>
+        _shown = string.IsNullOrWhiteSpace(_filter)
+            ? _all
+            : [.. _all.Where(folder => folder.Contains(_filter, StringComparison.OrdinalIgnoreCase))];
+
+    private Task Confirm() =>
+        CanConfirm ? OnCommit.InvokeAsync(new SavePathResult(_folder, _name.Trim())) : Task.CompletedTask;
+}

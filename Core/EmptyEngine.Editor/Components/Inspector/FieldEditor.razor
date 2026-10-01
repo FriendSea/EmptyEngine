@@ -1,0 +1,379 @@
+@inherits ObservingComponentBase
+@inject EditorViewModel Editor
+@inject AssetCatalog Catalog
+@inject IJSRuntime JS
+@inject ILogger<FieldEditor> Logger
+@implements IAsyncDisposable
+
+<div class="field @(Kind == EditorFieldKinds.Array || (Kind == EditorFieldKinds.Group && !Field.IsInlineComposite) ? "field-block" : "") @(Compact ? "field-compact" : "")">
+    <label class="field-name @(Field.AxisHint is { } axis ? $"axis axis-{axis}" : "") @(ScrubSensitivity is not null ? "scrub" : "")"
+           title="@(ScrubSensitivity is not null ? "Drag to change the value" : null)"
+           @ref="_label">@Field.Name</label>
+
+    @* 入力中の値が応答で巻き戻らないよう、フォーカス中は表示更新を抑制する。 *@
+    <div class="field-value" @onfocusin="BeginInput" @onfocusout="EndInput">
+        @if (Kind == EditorFieldKinds.Binary || (Field.IsReadOnly && !HasChildren))
+        {
+            <span class="field-readonly">@Field.DisplayText</span>
+        }
+        else if (Kind == EditorFieldKinds.Bool)
+        {
+            <input type="checkbox" checked="@Field.BoolValue"
+                   @onchange="e => Field.BoolValue = (bool?)e.Value ?? false" />
+        }
+        else if (Kind == EditorFieldKinds.Number)
+        {
+            <input type="number" step="any" class="num" value="@Field.NumericText"
+                   @onchange="OnNumericChanged" />
+        }
+        else if (Kind == EditorFieldKinds.Enum)
+        {
+            <select value="@Field.EnumValue" @onchange="e => Field.EnumValue = e.Value?.ToString() ?? string.Empty">
+                @foreach (string option in Field.EnumOptions)
+                {
+                    <option value="@option">@option</option>
+                }
+            </select>
+        }
+        else if (Kind == EditorFieldKinds.Color)
+        {
+            <div class="color-row">
+                <input type="color" value="@Field.ColorValue.ToHexRgb()" @onchange="OnColorChanged" />
+                <input type="range" min="0" max="255" value="@Field.ColorValue.A" class="alpha"
+                       title="Alpha" @ref="_alpha" @onchange="OnAlphaChanged" />
+                <span class="alpha-value">@Field.ColorValue.A</span>
+            </div>
+        }
+        else if (Kind == EditorFieldKinds.AssetReference)
+        {
+            <div class="ref-row @_assetDropClass" data-drop="asset"
+                 @ondragover="OnAssetDragOver"
+                 @ondragover:preventDefault="true"
+                 @ondragover:stopPropagation="true"
+                 @ondragleave="ClearAssetDrop"
+                 @ondrop="OnAssetDrop"
+                 @ondrop:preventDefault="true"
+                 @ondrop:stopPropagation="true">
+                <span class="ref-text @(Field.AssetKey is null ? "" : "linked")"
+                      title="@(Field.AssetKey is null ? Field.AssetReferenceText : $"{Field.AssetReferenceText} (click to reveal in the file tree)")"
+                      @onclick="RevealAsset">@Field.AssetReferenceText</span>
+                <button class="btn btn-small" @onclick="OpenAssetPicker">Select…</button>
+                <button class="btn btn-small" @onclick="Field.ClearAssetReference">Clear</button>
+            </div>
+        }
+        else if (Kind == EditorFieldKinds.ObjectReference)
+        {
+            <div class="ref-row">
+                <span class="ref-text @(Field.ObjectReferenceId is null ? "" : "linked")"
+                      title="@Field.ObjectReferenceText"
+                      @onclick="RevealObject">@Field.ObjectReferenceText</span>
+                <button class="btn btn-small" @onclick="OpenObjectPicker">Select…</button>
+                <button class="btn btn-small" @onclick="Field.ClearObjectReference">Clear</button>
+            </div>
+        }
+        else if (Kind == EditorFieldKinds.Array)
+        {
+            <div class="array">
+                <div class="array-head">
+                    <span>@Field.ArrayLengthText</span>
+                    @if (!Field.IsReadOnly)
+                    {
+                        <button class="btn btn-small" title="Append an element" @onclick="Field.AddArrayElement">+</button>
+                    }
+                </div>
+                @foreach (FieldViewModel element in Children)
+                {
+                    <div class="array-element">
+                        <FieldEditor @key="element" Field="element" />
+                        @if (!Field.IsReadOnly)
+                        {
+                            <button class="btn btn-icon" title="Remove this element" @onclick="element.RemoveSelfFromArray">✕</button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else if (Kind == EditorFieldKinds.Group)
+        {
+            <div class="@(Field.IsInlineComposite ? "row-fields" : "composite")">
+                @foreach (FieldViewModel child in Children)
+                {
+                    <FieldEditor @key="child" Field="child" Compact="Field.IsInlineComposite" />
+                }
+            </div>
+        }
+        else
+        {
+            <input type="text" value="@Field.TextValue"
+                   @onchange="e => Field.TextValue = e.Value?.ToString() ?? string.Empty" />
+        }
+    </div>
+</div>
+
+@if (_assetCandidates is { } assets)
+{
+    <PickerDialog TItem="AssetCandidate" Title="@AssetPickerTitle" Items="assets" TextOf="candidate => candidate.DisplayName"
+                  OnCommit="AssignAsset" OnCancel="CloseAssetPicker" />
+}
+
+@if (_objectCandidates is { } objects)
+{
+    <PickerDialog TItem="ObjectCandidate" Title="@ObjectPickerTitle" Items="objects" TextOf="candidate => candidate.DisplayName"
+                  OnCommit="AssignObject" OnCancel="CloseObjectPicker" />
+}
+
+@code {
+    [Parameter, EditorRequired] public FieldViewModel Field { get; set; } = null!;
+
+    /// <summary>横並びの組の一員として幅を詰めて描くか</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    private FieldViewModel? _bound;
+    private string _assetDropClass = string.Empty;
+    private ElementReference _label;
+    private ElementReference _alpha;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _drag;
+    private DotNetObjectReference<FieldEditor>? _self;
+    private bool _scrubAttached;
+    private bool _disposed;
+    private bool _inputHeld;
+    private bool _scrubHeld;
+    private IReadOnlyList<AssetCandidate>? _assetCandidates;
+    private IReadOnlyList<ObjectCandidate>? _objectCandidates;
+
+    private string Kind => EditorFieldKinds.Of(Field);
+
+    private string AssetPickerTitle =>
+        Field.AssetTypeConstraintDisplay is { } type ? $"Type: {type}" : "Any asset";
+
+    private string ObjectPickerTitle =>
+        Field.ObjectTypeConstraintDisplay is { } type ? $"Scene objects with: {type}" : "Scene objects";
+
+    /// <summary>子をぶら下げる欄（配列・入れ子 struct）か</summary>
+    /// <remarks>読み取り専用でも中は畳まず、葉のところで初めて入力欄が消える</remarks>
+    private bool HasChildren => Kind == EditorFieldKinds.Array || Kind == EditorFieldKinds.Group;
+
+    private double? ScrubSensitivity => Field.IsScrubbable && !Field.IsReadOnly ? Field.EffectiveScrubSensitivity : null;
+
+    private IReadOnlyList<FieldViewModel> Children => Field.IsArray
+        ? Field.Children.Snapshot
+        : Field.IsComposite ? Field.Children : Array.Empty<FieldViewModel>();
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_bound, Field)) return;
+
+        ReleaseHolds();
+        CloseAssetPicker();
+        CloseObjectPicker();
+        Unobserve();
+        _bound = Field;
+        Observe(Field);
+        ObserveCollection(Field.Children);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed || _scrubAttached || Field.IsReadOnly || (ScrubSensitivity is null && Kind != EditorFieldKinds.Color)) return;
+
+        _scrubAttached = true;
+        IJSObjectReference module = await JS.InvokeAsync<IJSObjectReference>("import", "/_content/EmptyEngine.Editor/editor.js");
+        if (_disposed)
+        {
+            await module.DisposeAsync();
+            return;
+        }
+        _module = module;
+        _self = DotNetObjectReference.Create(this);
+        IJSObjectReference drag = Kind == EditorFieldKinds.Color
+            ? await module.InvokeAsync<IJSObjectReference>("attachRange", _alpha, _self)
+            : await module.InvokeAsync<IJSObjectReference>("attachScrub", _label, _self, ScrubSensitivity!.Value);
+        if (_disposed)
+        {
+            await drag.InvokeVoidAsync("dispose");
+            await drag.DisposeAsync();
+            return;
+        }
+        _drag = drag;
+    }
+
+    /// <summary>値の更新を保持して、ドラッグ開始時の基準値を取得する</summary>
+    /// <remarks>掴んでいる間、手が止まって書き込みが途切れても値を押し戻さない</remarks>
+    [JSInvokable]
+    public Task<double?> BeginScrub() => Dispatcher.InvokeAsync<double?>(() =>
+    {
+        if (_disposed || Field.IsReadOnly || (!Field.IsScrubbable && Kind != EditorFieldKinds.Color)) return null;
+        HoldScrub();
+        return Kind == EditorFieldKinds.Color ? Field.ColorValue.A : Field.NumericValue;
+    });
+
+    /// <summary>ドラッグ終了を通知する</summary>
+    /// <remarks>直前の <see cref="SetScrubValue"/> による更新が完了してから、表示値の更新抑制を解除する。</remarks>
+    [JSInvokable]
+    public Task EndScrub() => Dispatcher.InvokeAsync(ReleaseScrub);
+
+    private void HoldScrub() => Hold(ref _scrubHeld);
+
+    private void ReleaseScrub() => Release(ref _scrubHeld);
+
+    private void BeginInput() => Hold(ref _inputHeld);
+
+    private void EndInput() => Release(ref _inputHeld);
+
+    private void Hold(ref bool held)
+    {
+        if (held || _bound is null) return;
+
+        held = true;
+        _bound.Edits.Hold();
+    }
+
+    private void Release(ref bool held)
+    {
+        if (!held || _bound is null) return;
+
+        held = false;
+        _bound.Edits.Release();
+    }
+
+    /// <summary>この編集欄のフォーカス・ドラッグによる更新抑制を解除する</summary>
+    private void ReleaseHolds()
+    {
+        Release(ref _inputHeld);
+        Release(ref _scrubHeld);
+    }
+
+    /// <summary>スクラブ中の値</summary>
+    [JSInvokable]
+    public Task SetScrubValue(double value) =>
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (_disposed || !_scrubHeld || Field.IsReadOnly) return;
+            if (Kind == EditorFieldKinds.Color)
+            {
+                Field.ColorValue = Field.ColorValue with { A = (byte)Math.Clamp(Math.Round(value), 0, 255) };
+                return;
+            }
+            Field.NumericValue = Field.IsInteger
+                ? Math.Round(value)
+                : value;
+        });
+
+    private void OpenAssetPicker() =>
+        _assetCandidates = Editor.GetAssetCandidates(Field.AssetTypeConstraint);
+
+    private void CloseAssetPicker() => _assetCandidates = null;
+
+    private void AssignAsset(AssetCandidate chosen)
+    {
+        CloseAssetPicker();
+        Field.AssignAssetReference(chosen.Key);
+    }
+
+    private void OpenObjectPicker() =>
+        _objectCandidates = Editor.GetObjectCandidates(Field.ObjectTypeConstraint);
+
+    private void CloseObjectPicker() => _objectCandidates = null;
+
+    private void AssignObject(ObjectCandidate chosen)
+    {
+        CloseObjectPicker();
+        Field.AssignObjectReference(chosen.TargetId);
+    }
+
+    private void OnAssetDragOver(DragEventArgs e)
+    {
+        if (FileDrop.IsExternal(e)) _assetDropClass = "drop-into";
+    }
+
+    private void ClearAssetDrop() => _assetDropClass = string.Empty;
+
+    /// <summary>アセット参照フィールドへ落とされたファイルの割り当て</summary>
+    private async Task OnAssetDrop(DragEventArgs e)
+    {
+        ClearAssetDrop();
+        if (!FileDrop.IsExternal(e)) return;
+
+        FieldViewModel field = Field;
+        Editor.BeginPickerSuspension();
+        try
+        {
+            string[] dropped = await FileDrop.TakeAsync(JS);
+            if (Editor.TryResolveDroppedAsset(dropped, field.AssetTypeConstraint, out AssetKey? reference)
+                && reference is { } resolved)
+            {
+                field.AssignAssetReference(resolved);
+            }
+        }
+        finally
+        {
+            Editor.ResumePickerSuspension();
+        }
+    }
+
+    /// <summary>アセット参照が指すソースファイルの外側ファイルツリーでの表示</summary>
+    private async Task RevealAsset()
+    {
+        if (Field.AssetKey is not { Length: > 0 } key) return;
+
+        if (!Catalog.TryGetSourcePath(key, out string? sourcePath) || sourcePath is null)
+        {
+            Logger.LogWarning("Reveal: no source file for '{Asset}'.", Field.AssetReferenceText);
+            return;
+        }
+
+        string full = Path.GetFullPath(sourcePath);
+        if (!await JS.InvokeAsync<bool>("emptyEngineReveal", full))
+            SourceFileBrowser.Reveal(full, Logger);
+    }
+
+    private void RevealObject()
+    {
+        if (Field.ObjectReferenceId is { } targetId)
+            Editor.SelectReferencedObject(targetId);
+    }
+
+    private void OnNumericChanged(ChangeEventArgs e)
+    {
+        Field.SetNumericText(e.Value?.ToString() ?? string.Empty);
+    }
+
+    private void OnColorChanged(ChangeEventArgs e)
+    {
+        if (EditorColor.TryParseHex(e.Value?.ToString(), Field.ColorValue.A, out EditorColor color))
+            Field.ColorValue = color;
+    }
+
+    private void OnAlphaChanged(ChangeEventArgs e)
+    {
+        if (byte.TryParse(e.Value?.ToString(), out byte alpha))
+            Field.ColorValue = Field.ColorValue with { A = alpha };
+    }
+
+    public override void Dispose()
+    {
+        _disposed = true;
+        ReleaseHolds();
+        base.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        try
+        {
+            if (_drag is not null)
+            {
+                await _drag.InvokeVoidAsync("dispose");
+                await _drag.DisposeAsync();
+            }
+            if (_module is not null) await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { /* 接続が先に切れた（リビルド時の通常運転） */ }
+        finally
+        {
+            _self?.Dispose();
+        }
+    }
+}

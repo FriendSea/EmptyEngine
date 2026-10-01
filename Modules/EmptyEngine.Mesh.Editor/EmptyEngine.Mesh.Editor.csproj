@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\..\Core\EmptyEngine.Editor\EmptyEngine.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Mesh\EmptyEngine.Mesh.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Graphics\EmptyEngine.Graphics.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Graphics.Editor\EmptyEngine.Graphics.Editor.csproj" />
+    <!-- 埋め込みテクスチャのデコード。 -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <!-- FBX の解析。 -->
+    <PackageReference Include="Silk.NET.Assimp" Version="2.23.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>

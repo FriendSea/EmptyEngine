@@ -1,0 +1,37 @@
+<Project>
+
+  <!-- ゲーム固有のエディタ設定。 -->
+
+  <PropertyGroup>
+    <EmptyEngineEditorProject>true</EmptyEngineEditorProject>
+    <AssetsPath>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../Assets'))</AssetsPath>
+    <BuildWorkingPath>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</BuildWorkingPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- エディタ拡張のソースを取り込む。 -->
+    <Compile Include="$(MSBuildThisFileDirectory)**/*.cs" />
+
+    <!-- Windows 向け配布ビルドを宣言する。 -->
+    <DistributionBuild Include="Windows">
+      <Command>dotnet publish -c Release -r win-x64 -o {output}</Command>
+    </DistributionBuild>
+
+    <!-- VSCode webview へのエディタ埋め込みを許可する。 -->
+    <EditorFrameAncestor Include="vscode-webview:" />
+    <EditorFrameAncestor Include="vscode-file:" />
+  </ItemGroup>
+
+  <!-- ゲームが参照するモジュールのエディタ側を参照する。 -->
+  <PropertyGroup>
+    <EmptyEngineGameProject>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../DotnetRuntimeSample.csproj'))</EmptyEngineGameProject>
+  </PropertyGroup>
+  <Import Project="$(MSBuildThisFileDirectory)EditorHalves.targets" />
+
+  <!-- エディタ本体とソースアセットのインポータを参照する。 -->
+  <ItemGroup>
+    <PackageReference Include="EmptyEngine.Editor" Version="*" />
+    <PackageReference Include="EmptyEngine.SceneSource.Editor" Version="*" />
+  </ItemGroup>
+
+</Project>

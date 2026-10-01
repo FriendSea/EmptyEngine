@@ -1,0 +1,4 @@
+{
+    "runtimeCommand": "dotnet watch --non-interactive --no-hot-reload run",
+    "editorProps": "Editor/Editor.targets"
+}

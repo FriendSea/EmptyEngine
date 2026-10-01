@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- 生成される ResolveAssetAttribute は internals を見せ合う相手にも生成されている。 -->
+    <NoWarn>$(NoWarn);CS0436</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\..\Core\EmptyEngine.Editor\EmptyEngine.Editor.csproj" />
+    <ProjectReference Include="..\..\Core\EmptyEngine.Tests\EmptyEngine.Tests.csproj" />
+    <ProjectReference Include="..\EmptyEngine.ObjectModel\EmptyEngine.ObjectModel.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Storage\EmptyEngine.Storage.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Storage.Editor\EmptyEngine.Storage.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Serialization\EmptyEngine.Serialization.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Serialization.Editor\EmptyEngine.Serialization.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.World\EmptyEngine.World.csproj" />
+    <ProjectReference Include="..\EmptyEngine.World.Editor\EmptyEngine.World.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Modules.Testing\EmptyEngine.Modules.Testing.csproj" />
+    <ProjectReference Include="..\EmptyEngine.SceneSource.Editor\EmptyEngine.SceneSource.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Generators\EmptyEngine.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\EmptyEngine.Serialization.Generator\EmptyEngine.Serialization.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

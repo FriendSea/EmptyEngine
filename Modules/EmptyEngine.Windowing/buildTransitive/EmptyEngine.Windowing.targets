@@ -1,0 +1,8 @@
+<Project>
+
+  <!-- ブラウザ向けウィンドウ・入力シムをアプリへリンクする。 -->
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'browser'">
+    <NativeFileReference Include="$(MSBuildThisFileDirectory)..\native\ee_windowing.c" />
+  </ItemGroup>
+
+</Project>

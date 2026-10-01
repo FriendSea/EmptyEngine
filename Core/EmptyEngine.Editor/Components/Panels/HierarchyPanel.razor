@@ -1,0 +1,208 @@
+@inherits ObservingComponentBase
+@inject EditorViewModel Editor
+@inject EditHistoryViewModel History
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="panel" data-shortcuts="hierarchy">
+    <header class="panel-head">
+        <h2>Hierarchy</h2>
+    </header>
+
+    <div class="toolbar">
+        <button class="btn @(Editor.IsPlaying ? "btn-active" : "")"
+                title="Toggle Play/Edit mode (Ctrl+P). OnCreated runs while playing; scenes reload on switch."
+                @onclick="TogglePlay">@(Editor.IsPlaying ? "■ Stop" : "▶ Play")</button>
+        <button class="btn" title="Undo (Ctrl+Z)" disabled="@(!History.CanUndo)" @onclick="History.Undo">↶</button>
+        <button class="btn" title="Redo (Ctrl+Y)" disabled="@(!History.CanRedo)" @onclick="History.Redo">↷</button>
+        <span class="toolbar-gap"></span>
+        <button class="btn" title="Add object" @onclick="Editor.AddObject">+</button>
+        <button class="btn" title="Delete (Del)" disabled="@(!Editor.CanModifySelectedObject)" @onclick="Editor.DeleteSelectedObject">🗑</button>
+        <button class="btn" title="Move up" disabled="@(!Editor.CanModifySelectedObject)" @onclick="() => Editor.MoveSelectedObject(-1)">↑</button>
+        <button class="btn" title="Move down" disabled="@(!Editor.CanModifySelectedObject)" @onclick="() => Editor.MoveSelectedObject(1)">↓</button>
+    </div>
+
+    <div class="toolbar">
+        <button class="btn" disabled="@(!Editor.CanCreateScene)" @onclick="NewScene"
+                title="Create and load a new empty scene (choose its folder and name)">New</button>
+        <button class="btn" @onclick="OpenScene"
+                title="Pick a scene and load it as a new instance (the same scene can be loaded several times)">Open…</button>
+        @if (Editor.CanSaveScene)
+        {
+            <button class="btn btn-primary" title="Save the scene that owns the selected node (Ctrl+S)" @onclick="Editor.SaveScene">Save</button>
+        }
+        @if (Editor.CanUnloadScene)
+        {
+            <button class="btn" @onclick="Editor.UnloadSelectedScene"
+                    title="Remove the scene instance that owns the selected node from the world">Unload</button>
+        }
+    </div>
+
+    <input class="filter" type="search" placeholder="Filter objects" @bind="_filter" @bind:event="oninput" />
+
+    @if (Editor.SelectedNode is not null)
+    {
+        <input class="rename" type="text" placeholder="name"
+               value="@Editor.SelectedNodeName"
+               @onchange="OnRename" />
+    }
+
+    <div class="tree @_treeDropClass" data-drop="hierarchy" @onkeydown="OnTreeKeyDown" tabindex="0" @ref="_tree"
+         @ondragover="OnTreeDragOver"
+         @ondragover:preventDefault="true"
+         @ondragleave="ClearTreeDrop"
+         @ondrop="OnTreeDrop"
+         @ondrop:preventDefault="true">
+        @foreach (HierarchyNodeViewModel node in Editor.RootNodes.Snapshot)
+        {
+            <HierarchyNodeRow @key="node" Node="node" Depth="0" Filter="@_filter" />
+        }
+    </div>
+</div>
+
+@if (_folders is { } folders)
+{
+    <SavePathDialog Title="New Scene" Folders="folders" InitialName="NewScene" Extension=".scene"
+                    ConfirmText="Create" OnCommit="CreateScene" OnCancel="() => _folders = null" />
+}
+
+@if (_scenes is { } scenes)
+{
+    <PickerDialog TItem="AssetCandidate" Title="Scene" Items="scenes" TextOf="candidate => candidate.DisplayName"
+                  OnCommit="LoadScene" OnCancel="() => _scenes = null" />
+}
+
+@code {
+    private string _filter = string.Empty;
+    private string _treeDropClass = string.Empty;
+    private ElementReference _tree;
+    private HierarchyNodeViewModel? _lastScrolledSelection;
+    private IJSObjectReference? _module;
+    private IReadOnlyList<string>? _folders;
+    private IReadOnlyList<AssetCandidate>? _scenes;
+
+    protected override void OnInitialized()
+    {
+        Observe(Editor);
+        Observe(History);
+        ObserveCollection(Editor.RootNodes);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_module is null)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "/_content/EmptyEngine.Editor/editor.js");
+            await _module.InvokeVoidAsync("initHierarchyKeys", _tree);
+        }
+
+        HierarchyNodeViewModel? selected = Editor.SelectedNode;
+        if (ReferenceEquals(selected, _lastScrolledSelection)) return;
+
+        _lastScrolledSelection = selected;
+        if (selected is not null)
+            await _module.InvokeVoidAsync("scrollHierarchySelection", _tree);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    private void NewScene() => _folders = Editor.GetAssetFolders();
+
+    private void CreateScene(SavePathResult result)
+    {
+        _folders = null;
+        _ = Editor.CreateNewSceneAsync(result.Folder, result.Name);
+    }
+
+    private void OpenScene() => _scenes = Editor.GetSceneCandidates();
+
+    private void LoadScene(AssetCandidate chosen)
+    {
+        _scenes = null;
+        Editor.LoadScene(chosen.Key);
+    }
+
+    private void TogglePlay() => Editor.SetPlayMode(!Editor.IsPlaying);
+
+    private void OnTreeDragOver(DragEventArgs e)
+    {
+        if (FileDrop.IsExternal(e)) _treeDropClass = "drop-root";
+    }
+
+    private void ClearTreeDrop() => _treeDropClass = string.Empty;
+
+    private async Task OnTreeDrop(DragEventArgs e)
+    {
+        ClearTreeDrop();
+        if (!FileDrop.IsExternal(e)) return;
+
+        await Editor.DropFilesAsync(await FileDrop.TakeAsync(JS));
+    }
+
+    private void OnRename(ChangeEventArgs e) => Editor.SelectedNodeName = e.Value?.ToString();
+
+    private void OnTreeKeyDown(KeyboardEventArgs e)
+    {
+        if (!e.CtrlKey && !e.MetaKey && !e.AltKey && !e.ShiftKey)
+        {
+            switch (e.Key)
+            {
+                case "ArrowUp":
+                    MoveSelection(-1);
+                    break;
+                case "ArrowDown":
+                    MoveSelection(1);
+                    break;
+                case "ArrowLeft" or "ArrowRight":
+                    if (Editor.SelectedNode is { Children.Count: > 0 } selected)
+                        Editor.SetHierarchyExpanded(selected, e.Key == "ArrowRight");
+                    break;
+                case " " when !e.Repeat:
+                    if (Editor.SelectedNode is { } node)
+                        Editor.SetActive(node, !node.Active);
+                    break;
+            }
+        }
+
+        if (!e.CtrlKey && !e.MetaKey) return;
+
+        switch (e.Key)
+        {
+            case "c" or "C":
+                Editor.CopySelectedObject();
+                break;
+            case "v" or "V":
+                Editor.PasteObject();
+                break;
+        }
+    }
+
+    private void MoveSelection(int step)
+    {
+        List<HierarchyNodeViewModel> visible = [.. VisibleNodes(Editor.RootNodes.Snapshot)];
+        if (visible.Count == 0) return;
+
+        int index = visible.FindIndex(node => ReferenceEquals(node, Editor.SelectedNode));
+        Editor.SelectedNode = visible[Math.Clamp(index + step, 0, visible.Count - 1)];
+    }
+
+    private IEnumerable<HierarchyNodeViewModel> VisibleNodes(IReadOnlyList<HierarchyNodeViewModel> nodes)
+    {
+        foreach (HierarchyNodeViewModel node in nodes)
+        {
+            if (node.MatchesFilter(_filter, Editor.SelectedNode)) yield return node;
+            if (!node.IsExpanded && string.IsNullOrWhiteSpace(_filter)) continue;
+
+            foreach (HierarchyNodeViewModel child in VisibleNodes(node.Children.Snapshot))
+                yield return child;
+        }
+    }
+}

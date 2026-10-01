@@ -1,0 +1,4 @@
+{
+    "runtimeCommand": "cargo watch -w src -w build.rs -w Cargo.toml -x run",
+    "editorProps": "BevyRuntimeSample.Editor.targets"
+}

@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <!-- Host のバージョンを VSCode 拡張と揃える。 -->
+    <_ExtensionManifest>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)..\..\vscode-extension\package.json'))</_ExtensionManifest>
+    <Version>$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(_ExtensionManifest)')), '(?s)^.*?"version"\s*:\s*"([^"]+)".*$', '$1'))</Version>
+    <!-- Host CLI を dotnet tool として梱包する。 -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>emptyengine</ToolCommandName>
+    <Description>CLI that opens EmptyEngine projects (*.emptyengine). Runs the runtime and the local web editor under dotnet watch, and produces distribution builds.</Description>
+    <PackageTags>emptyengine;gamedev;game-engine;editor</PackageTags>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);EMPTYENGINE_HOST</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- シーン同期のワイヤ定義を共有ソースとして取り込む。 -->
+    <Compile Include="..\EmptyEngine.Core\RuntimeLink\SceneWire.cs" Link="SceneWire.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="ConsoleAppFramework" Version="5.7.13" PrivateAssets="all"
+                      IncludeAssets="runtime;build;native;contentfiles;analyzers;buildtransitive" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmptyEngine.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,141 @@
+@attribute [InspectorFor(typeof(TransformComponent))]
+@inherits AuthoringInspectorBase
+
+<Vector3Row Label="Position" Model="Position" />
+<Vector3Row Label="Rotation" Model="Rotation" />
+<Vector3Row Label="Scale" Model="Scale" />
+<TransformGizmo Model="Gizmo" />
+
+@code {
+    private const float PositionSensitivity = 0.01f;
+    private const float RotationSensitivity = 0.5f;
+    private const float ScaleSensitivity = 0.01f;
+
+    private const string MatrixField = "Matrix";
+
+    private static readonly string[] MatrixKeys =
+    [
+        "M11", "M12", "M13", "M14",
+        "M21", "M22", "M23", "M24",
+        "M31", "M32", "M33", "M34",
+        "M41", "M42", "M43", "M44",
+    ];
+
+    private AuthoringObjectViewModel _component = null!;
+    private Matrix4x4 _lastKnownMatrix;
+
+    public TransformInspector() => Gizmo.Changed += OnGizmoChanged;
+
+    internal Vector3FieldGroup Position { get; private set; } = null!;
+
+    internal Vector3FieldGroup Rotation { get; private set; } = null!;
+
+    internal Vector3FieldGroup Scale { get; private set; } = null!;
+
+    internal TransformGizmoModel Gizmo { get; } = new();
+
+    private FieldViewModel?[] Matrix => MatrixKeys.Select(key => _component.Root.Get(MatrixField)?.Get(key)).ToArray();
+
+    protected override void OnAuthoringBound() => Bind(Authoring);
+
+    protected override void OnAuthoringRefreshed() => Read();
+
+    /// <summary>編集対象の差し替え</summary>
+    /// <remarks>位置・回転・スケールの欄を作り直し、現在の行列を読む</remarks>
+    internal void Bind(AuthoringObjectViewModel component)
+    {
+        _component = component;
+        _lastKnownMatrix = default;
+
+        Position = new Vector3FieldGroup(component, "pos", PositionSensitivity, OnFieldEdited);
+        Rotation = new Vector3FieldGroup(component, "rot", RotationSensitivity, OnFieldEdited);
+        Scale = new Vector3FieldGroup(component, "scale", ScaleSensitivity, OnFieldEdited) { Value = Vector3.One };
+
+        PushToGizmo();
+        Read();
+    }
+
+    /// <summary>現在の変換の位置・回転・スケールの表示への反映</summary>
+    private void Read()
+    {
+        if (!TryReadMatrix(out Matrix4x4 matrix)) return;
+        if (matrix == _lastKnownMatrix) return;
+
+        _lastKnownMatrix = matrix;
+
+        if (Matrix4x4.Decompose(matrix, out Vector3 scale, out Quaternion rotation, out Vector3 translation))
+        {
+            Position.Value = translation;
+            Scale.Value = scale;
+            Rotation.Value = EulerRotation.ToDegrees(rotation);
+        }
+        else
+        {
+            Position.Value = matrix.Translation;
+            Scale.Value = Vector3.One;
+            Rotation.Value = Vector3.Zero;
+        }
+
+        PushToGizmo();
+    }
+
+    private void OnFieldEdited(string editKey)
+    {
+        PushToGizmo();
+        Apply(editKey);
+    }
+
+    private void OnGizmoChanged()
+    {
+        Position.SetValue(Position.Value with { X = (float)Gizmo.PositionX, Y = (float)Gizmo.PositionY }, force: true);
+        Rotation.SetValue(Gizmo.RotationDeg, force: true);
+        Scale.SetValue(Gizmo.Scale, force: true);
+
+        Apply("gizmo");
+    }
+
+    private void PushToGizmo() =>
+        Gizmo.SetState(Position.Value.X, Position.Value.Y, Rotation.Value, Scale.Value);
+
+    private bool TryReadMatrix(out Matrix4x4 matrix)
+    {
+        matrix = default;
+        FieldViewModel?[] values = Matrix;
+        foreach (FieldViewModel? scalar in values)
+            if (scalar is null) return false;
+
+        matrix = new Matrix4x4(
+            (float)values[0]!.NumericValue, (float)values[1]!.NumericValue, (float)values[2]!.NumericValue, (float)values[3]!.NumericValue,
+            (float)values[4]!.NumericValue, (float)values[5]!.NumericValue, (float)values[6]!.NumericValue, (float)values[7]!.NumericValue,
+            (float)values[8]!.NumericValue, (float)values[9]!.NumericValue, (float)values[10]!.NumericValue, (float)values[11]!.NumericValue,
+            (float)values[12]!.NumericValue, (float)values[13]!.NumericValue, (float)values[14]!.NumericValue, (float)values[15]!.NumericValue);
+        return true;
+    }
+
+    private void Apply(string? editKey)
+    {
+        FieldViewModel?[] values = Matrix;
+        foreach (FieldViewModel? scalar in values)
+            if (scalar is null) return;
+
+        Matrix4x4 matrix =
+            Matrix4x4.CreateScale(Scale.Value)
+            * EulerRotation.FromDegrees(Rotation.Value)
+            * Matrix4x4.CreateTranslation(Position.Value);
+
+        _component.Edit(editKey, () =>
+        {
+            values[0]!.NumericValue = matrix.M11; values[1]!.NumericValue = matrix.M12; values[2]!.NumericValue = matrix.M13; values[3]!.NumericValue = matrix.M14;
+            values[4]!.NumericValue = matrix.M21; values[5]!.NumericValue = matrix.M22; values[6]!.NumericValue = matrix.M23; values[7]!.NumericValue = matrix.M24;
+            values[8]!.NumericValue = matrix.M31; values[9]!.NumericValue = matrix.M32; values[10]!.NumericValue = matrix.M33; values[11]!.NumericValue = matrix.M34;
+            values[12]!.NumericValue = matrix.M41; values[13]!.NumericValue = matrix.M42; values[14]!.NumericValue = matrix.M43; values[15]!.NumericValue = matrix.M44;
+        });
+        _lastKnownMatrix = matrix;
+    }
+
+    public override void Dispose()
+    {
+        Gizmo.Changed -= OnGizmoChanged;
+        base.Dispose();
+    }
+}

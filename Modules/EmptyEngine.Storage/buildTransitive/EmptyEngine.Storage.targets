@@ -1,0 +1,77 @@
+<Project>
+  <!-- 通常ビルドで開発用ストアを有効にする。 -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="EmptyEngine.DevelopmentAssets"
+                                    Value="true" Trim="true" Condition="'$(_IsPublishing)' != 'true'" />
+    <RuntimeHostConfigurationOption Include="EmptyEngine.DevelopmentAssets"
+                                    Value="false" Trim="true" Condition="'$(_IsPublishing)' == 'true'" />
+  </ItemGroup>
+
+  <!-- エディタ接続時にアーティファクトを取りに行く場所を宣言する。 -->
+  <ItemGroup Condition="'$(EmptyEngineAssetServerUrl)' != ''">
+    <RuntimeHostConfigurationOption Include="EmptyEngine.AssetServerUrl" Value="$(EmptyEngineAssetServerUrl)" />
+  </ItemGroup>
+
+  <!-- 開発ビルドの配信で、編集セッションの共有の置き場をページ隣の assets/ として配る。 -->
+  <PropertyGroup>
+    <_EmptyEngineServesImportedAssets Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'browser' and '$(_IsPublishing)' != 'true'">true</_EmptyEngineServesImportedAssets>
+    <_EmptyEngineImportedAssetsDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '.artifacts', 'ImportedAssets'))</_EmptyEngineImportedAssetsDir>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_EmptyEngineServesImportedAssets)' == 'true'">
+    <!-- Source がプロジェクト名と同じだと BasePath が無視されてルート直下に載る。 -->
+    <StaticWebAssetDiscoveryPattern Include="EmptyEngine.Storage\ImportedAssets">
+      <Source>EmptyEngine.Storage.ImportedAssets</Source>
+      <BasePath>assets</BasePath>
+      <ContentRoot>$(_EmptyEngineImportedAssetsDir)</ContentRoot>
+      <Pattern>**</Pattern>
+    </StaticWebAssetDiscoveryPattern>
+  </ItemGroup>
+
+  <!-- 配る場所が無いと配信が起動しないので、取り込み前でも場所だけ作る。 -->
+  <Target Name="EmptyEngineCreateServedImportedAssets" BeforeTargets="Build"
+          Condition="'$(_EmptyEngineServesImportedAssets)' == 'true'">
+    <MakeDir Directories="$(_EmptyEngineImportedAssetsDir)" />
+  </Target>
+
+  <!-- ビルド時点の成果物を配る一覧に載せる。載っていないものは配信が警告を出しながら配る。 -->
+  <Target Name="EmptyEngineListServedImportedAssets"
+          Condition="'$(_EmptyEngineServesImportedAssets)' == 'true'"
+          DependsOnTargets="ResolveStaticWebAssetsConfiguration"
+          BeforeTargets="GenerateStaticWebAssetsManifest">
+    <ItemGroup>
+      <!-- SourceId がプロジェクト名だと BasePath は効かないので、相対パスの側に assets/ を入れる。 -->
+      <_EmptyEngineImportedAssetFile Include="$(_EmptyEngineImportedAssetsDir)**/*.bin" />
+      <_EmptyEngineImportedAssetCandidate Include="@(_EmptyEngineImportedAssetFile)">
+        <RelativePath>assets/%(_EmptyEngineImportedAssetFile.RecursiveDir)%(_EmptyEngineImportedAssetFile.Filename)%(_EmptyEngineImportedAssetFile.Extension)</RelativePath>
+      </_EmptyEngineImportedAssetCandidate>
+    </ItemGroup>
+
+    <DefineStaticWebAssets CandidateAssets="@(_EmptyEngineImportedAssetCandidate)"
+                           SourceId="$(PackageId)"
+                           SourceType="Computed"
+                           ContentRoot="$(_EmptyEngineImportedAssetsDir)"
+                           BasePath="/"
+                           CopyToOutputDirectory="Never"
+                           CopyToPublishDirectory="Never"
+                           CacheManifestPath="$(IntermediateOutputPath)EmptyEngine.ImportedAssets.cache.json">
+      <Output TaskParameter="Assets" ItemName="StaticWebAsset" />
+      <Output TaskParameter="Assets" ItemName="_EmptyEngineImportedStaticWebAsset" />
+    </DefineStaticWebAssets>
+
+    <DefineStaticWebAssetEndpoints CandidateAssets="@(_EmptyEngineImportedStaticWebAsset)"
+                                   ContentTypeMappings="@(StaticWebAssetContentTypeMapping)">
+      <Output TaskParameter="Endpoints" ItemName="_EmptyEngineImportedEndpoint" />
+    </DefineStaticWebAssetEndpoints>
+
+    <ItemGroup>
+      <StaticWebAssetEndpoint Include="@(_EmptyEngineImportedEndpoint)" />
+      <FileWrites Include="$(IntermediateOutputPath)EmptyEngine.ImportedAssets.cache.json" />
+    </ItemGroup>
+  </Target>
+
+  <!-- publish 出力のランタイム設定を配布用に切り替える。 -->
+  <Target Name="EmptyEnginePublishRuntimeConfiguration"
+          BeforeTargets="ComputeFilesToPublish"
+          DependsOnTargets="GenerateBuildRuntimeConfigurationFiles" />
+</Project>

@@ -1,0 +1,8 @@
+<Project>
+
+  <!-- ブラウザ向け音声シムをアプリへリンクする。 -->
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'browser'">
+    <NativeFileReference Include="$(MSBuildThisFileDirectory)..\native\ee_audio.c" />
+  </ItemGroup>
+
+</Project>

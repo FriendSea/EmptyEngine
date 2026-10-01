@@ -1,0 +1,24 @@
+<button class="menu-item" disabled="@(!Enabled)" title="@Title" @onclick="Invoke">
+    <span>@Label</span>
+    @if (!string.IsNullOrEmpty(Shortcut))
+    {
+        <span class="menu-shortcut">@Shortcut</span>
+    }
+</button>
+
+@code {
+    [CascadingParameter] public ContextMenu? Menu { get; set; }
+
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+    [Parameter] public string? Shortcut { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public bool Enabled { get; set; } = true;
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private async Task Invoke()
+    {
+        if (!Enabled) return;
+        await OnClick.InvokeAsync();
+        if (Menu is not null) await Menu.Close();
+    }
+}

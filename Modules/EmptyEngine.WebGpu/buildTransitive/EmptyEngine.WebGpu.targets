@@ -1,0 +1,19 @@
+<Project>
+
+  <!-- ブラウザ向け WebGPU シムをアプリへリンクする。 -->
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'browser'">
+    <NativeFileReference Include="$(MSBuildThisFileDirectory)..\native\webgpu_dawn.c" />
+  </ItemGroup>
+
+  <!-- iOS 向け Dawn の静的ライブラリをアプリへリンクする。 -->
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'ios'">
+    <NativeReference Include="$(MSBuildThisFileDirectory)..\runtimes\ios-arm64\native\libemptyengine_webgpu_dawn.a"
+                     Kind="Static" ForceLoad="true" IsCxx="true" />
+  </ItemGroup>
+
+  <!-- Metal バックエンドに必要な Apple フレームワークをリンクする。 -->
+  <PropertyGroup Condition="'$(TargetPlatformIdentifier)' == 'ios'">
+    <MtouchExtraArgs>$(MtouchExtraArgs) --gcc_flags '-framework Metal -framework QuartzCore -framework Foundation -framework CoreGraphics -framework IOKit -framework IOSurface'</MtouchExtraArgs>
+  </PropertyGroup>
+
+</Project>

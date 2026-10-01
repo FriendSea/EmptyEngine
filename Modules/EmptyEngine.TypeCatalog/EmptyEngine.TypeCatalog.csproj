@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>0.3.1</Version>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <UseAppHost>false</UseAppHost>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_PackEmptyEngineCatalogTool</TargetsForTfmSpecificContentInPackage>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 利用可能な最新メジャーのランタイムでツールを起動する。 -->
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- コンパイル用 Roslyn API 参照。実行時には SDK の Roslyn を使用する。 -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0"
+                      PrivateAssets="all" ExcludeAssets="runtime" />
+    <Compile Include="..\EmptyEngine.Serialization.Generator\SerializationModel.cs"
+             Link="Shared\SerializationModel.cs" />
+    <Compile Include="..\EmptyEngine.Serialization.Generator\SerializationDiscovery.cs"
+             Link="Shared\SerializationDiscovery.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EmptyEngine.Serialization\EmptyEngine.Serialization.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="build\EmptyEngine.TypeCatalog.targets" />
+    <None Include="build\EmptyEngine.TypeCatalog.targets"
+          Pack="true"
+          PackagePath="build\EmptyEngine.TypeCatalog.targets" />
+    <!-- ツールに同梱する依存 dll のライセンスを梱包する。 -->
+    <None Remove="licenses\**\*" />
+    <None Include="licenses\**\*"
+          Pack="true"
+          PackagePath="licenses\" />
+  </ItemGroup>
+
+  <Target Name="_PackEmptyEngineCatalogTool" DependsOnTargets="Publish">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(PublishDir)**\*">
+        <PackagePath>tools\$(TargetFramework)\any\</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
+
+</Project>

@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "EmptyEngine",
+  "classifications": [ "Game", "EmptyEngine" ],
+  "identity": "EmptyEngine.Game.CSharp",
+  "name": "EmptyEngine Game",
+  "shortName": "emptyengine",
+  "defaultName": "Game",
+  "tags": { "language": "C#", "type": "project" },
+  "sourceName": "DotnetRuntimeSample",
+  "preferNameDirectory": true,
+  "guids": [ "765aedf3-9b8e-4c58-b434-e4b76fb06ed8" ],
+  "sources": [
+    {
+      "source": "./",
+      "target": "./",
+      "exclude": [
+        "**/bin/**",
+        "**/obj/**",
+        "**/.artifacts/**",
+        "**/.vs/**",
+        ".template.config/**",
+        "Directory.Build.props",
+        "README.md"
+      ]
+    }
+  ]
+}

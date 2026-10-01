@@ -1,0 +1,183 @@
+{
+  "name": "emptyengine-host",
+  "displayName": "EmptyEngine Host",
+  "description": "Shows the EmptyEngine editor (the local web UI served by the Host) inside VSCode",
+  "//": "この version がリリースの番号の正。拡張（.vsix）と Host（EmptyEngine.Host）で共有していて、Core/EmptyEngine.Host/EmptyEngine.Host.csproj がここを読む。git のタグは公開の記録として、リリースの workflow が後から打つ（v1.2.3 と EmptyEngine.Host/1.2.3）。上げるのは変更と同じ PR で。",
+  "version": "0.6.2",
+  "publisher": "FriendSea",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FriendSea/EmptyEngine.git",
+    "directory": "vscode-extension"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/*.emptyengine"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "emptyEngine",
+          "title": "EmptyEngine",
+          "icon": "media/emptyengine.svg"
+        }
+      ]
+    },
+    "views": {
+      "emptyEngine": [
+        {
+          "id": "emptyEngine.hierarchy",
+          "name": "Hierarchy",
+          "type": "webview"
+        },
+        {
+          "id": "emptyEngine.inspector",
+          "name": "Inspector",
+          "type": "webview"
+        },
+        {
+          "id": "emptyEngine.build",
+          "name": "Build",
+          "type": "webview",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "emptyEngine.openInEditor",
+        "title": "Open in Editor Area (All Panes)",
+        "category": "EmptyEngine",
+        "icon": "$(multiple-windows)"
+      },
+      {
+        "command": "emptyEngine.openPaneInEditor",
+        "title": "Open Pane in Editor Area…",
+        "category": "EmptyEngine",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "emptyEngine.openInBrowser",
+        "title": "Open in Browser",
+        "category": "EmptyEngine",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "emptyEngine.restartHost",
+        "title": "Restart Host",
+        "category": "EmptyEngine",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "emptyEngine.showHostConsole",
+        "title": "Show Host Console",
+        "category": "EmptyEngine",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "emptyEngine.showLogs",
+        "title": "Show Extension Logs",
+        "category": "EmptyEngine",
+        "icon": "$(output)"
+      },
+      {
+        "command": "emptyEngine.selectProject",
+        "title": "Select Project (*.emptyengine)",
+        "category": "EmptyEngine"
+      },
+      {
+        "command": "emptyEngine.inspectFile",
+        "title": "Show in Inspector",
+        "category": "EmptyEngine",
+        "icon": "$(search)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "emptyEngine.inspectFile",
+          "when": "!explorerResourceIsFolder",
+          "group": "2_workspace"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "emptyEngine.openInEditor",
+          "when": "view == emptyEngine.hierarchy || view == emptyEngine.inspector || view == emptyEngine.build",
+          "group": "navigation@1"
+        },
+        {
+          "command": "emptyEngine.restartHost",
+          "when": "view == emptyEngine.hierarchy || view == emptyEngine.inspector || view == emptyEngine.build",
+          "group": "navigation@2"
+        },
+        {
+          "command": "emptyEngine.showHostConsole",
+          "when": "view == emptyEngine.hierarchy || view == emptyEngine.inspector || view == emptyEngine.build",
+          "group": "navigation@3"
+        },
+        {
+          "command": "emptyEngine.openPaneInEditor",
+          "when": "view == emptyEngine.hierarchy || view == emptyEngine.inspector || view == emptyEngine.build",
+          "group": "1_open"
+        },
+        {
+          "command": "emptyEngine.openInBrowser",
+          "when": "view == emptyEngine.hierarchy || view == emptyEngine.inspector || view == emptyEngine.build",
+          "group": "1_open"
+        },
+        {
+          "command": "emptyEngine.selectProject",
+          "when": "view == emptyEngine.hierarchy || view == emptyEngine.inspector || view == emptyEngine.build",
+          "group": "1_open"
+        },
+        {
+          "command": "emptyEngine.showLogs",
+          "when": "view == emptyEngine.hierarchy || view == emptyEngine.inspector || view == emptyEngine.build",
+          "group": "1_open"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "EmptyEngine",
+      "properties": {
+        "emptyEngine.project": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the project manifest (*.emptyengine) to open. Relative paths are resolved against the workspace folder. If empty, the workspace is searched, and you are asked to choose when several are found."
+        },
+        "emptyEngine.configuration": {
+          "type": "string",
+          "default": "Debug",
+          "description": "Build configuration of the editor. Passed as-is to the Host's --configuration."
+        },
+        "emptyEngine.followExplorerSelection": {
+          "type": "boolean",
+          "default": true,
+          "description": "Shows the asset for the file selected in the Explorer in the Inspector. Selecting a non-asset file (such as .cs) leaves the Inspector unchanged. «Show in Inspector» from the context menu still works when this is off."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "node scripts/package.mjs",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.4.5"
+  }
+}

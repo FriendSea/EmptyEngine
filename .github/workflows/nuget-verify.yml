@@ -1,0 +1,33 @@
+# 未公開パッケージを生成・検証する。公開は nuget-release.yml が行う。
+
+name: Verify NuGet packages
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 公開タグとの差分を検査するため、履歴全体を取得する。
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build and verify
+        run: dotnet run build/NuGetRelease.cs -- build --out .artifacts/nuget-release
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nuget-packages
+          path: .artifacts/nuget-release

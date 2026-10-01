@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Core\EmptyEngine.Core\EmptyEngine.Core.csproj" />
+    <ProjectReference Include="..\..\Core\EmptyEngine.Editor\EmptyEngine.Editor.csproj" />
+    <ProjectReference Include="..\EmptyEngine.Graphics\EmptyEngine.Graphics.csproj" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <!-- ホスト別の Basis Universal エンコーダを埋め込む。 -->
+    <EmbeddedResource Include="tools\basis_universal\win-x64\basisu.exe"
+                      LogicalName="EmptyEngine.Graphics.Editor.basisu.win-x64.exe" />
+    <EmbeddedResource Include="tools\basis_universal\osx-arm64\basisu"
+                      LogicalName="EmptyEngine.Graphics.Editor.basisu.osx-arm64" />
+    <!-- 埋め込んだエンコーダの LICENSE と NOTICE を梱包する。 -->
+    <None Include="tools\basis_universal\LICENSE;tools\basis_universal\NOTICE"
+          Pack="true"
+          PackagePath="licenses\basis_universal\" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- 埋め込む Basis Universal エンコーダのライセンスを含める。 -->
+    <PackageLicenseExpression>MIT AND Apache-2.0</PackageLicenseExpression>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

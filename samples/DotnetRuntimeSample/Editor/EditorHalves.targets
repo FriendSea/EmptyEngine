@@ -1,0 +1,59 @@
+<Project>
+
+  <!-- 参照先のモジュールが名乗るエディタ側の一覧を返す。 -->
+  <Target Name="EmptyEngineGetEditorHalves" Returns="@(_EmptyEngineEditorHalfOut)">
+    <MSBuild Projects="@(ProjectReference)"
+             Targets="EmptyEngineGetEditorHalves"
+             SkipNonexistentTargets="true"
+             Condition="'@(ProjectReference)' != ''">
+      <Output TaskParameter="TargetOutputs" ItemName="_EmptyEngineEditorHalfOut" />
+    </MSBuild>
+    <ItemGroup>
+      <_EmptyEngineEditorHalfOut Include="@(EmptyEngineEditorHalf->'%(FullPath)')"
+                                 Condition="'%(EmptyEngineEditorHalf.Version)' == ''" />
+      <_EmptyEngineEditorHalfOut Include="@(EmptyEngineEditorHalf)"
+                                 Condition="'%(EmptyEngineEditorHalf.Version)' != ''" />
+    </ItemGroup>
+  </Target>
+
+  <!-- 集めたエディタ側を参照に加える。 -->
+  <PropertyGroup Condition="'$(EmptyEngineGameProject)' != ''">
+    <_EmptyEngineEditorHalvesFile>$(MSBuildProjectExtensionsPath)$(MSBuildProjectFile).editor-halves.txt</_EmptyEngineEditorHalvesFile>
+    <_EmptyEngineEditorHalves Condition="Exists('$(_EmptyEngineEditorHalvesFile)')">$([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(_EmptyEngineEditorHalvesFile)').Trim()), '\r?\n', ';'))</_EmptyEngineEditorHalves>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_EmptyEngineEditorHalves)' != ''">
+    <_EmptyEngineEditorHalf Include="$([MSBuild]::Unescape('$(_EmptyEngineEditorHalves)'))">
+      <Name>$([System.Text.RegularExpressions.Regex]::Replace('%(Identity)', '\|.*$', ''))</Name>
+      <Version>$([System.Text.RegularExpressions.Regex]::Replace('%(Identity)', '^[^|]*\|([^|]*).*$', '$1'))</Version>
+      <Analyzer>$([System.Text.RegularExpressions.Regex]::Replace('%(Identity)', '^[^|]*\|[^|]*\|', ''))</Analyzer>
+    </_EmptyEngineEditorHalf>
+    <ProjectReference Include="@(_EmptyEngineEditorHalf->WithMetadataValue('Version', '')->WithMetadataValue('Analyzer', '')->'%(Name)')" />
+    <ProjectReference Include="@(_EmptyEngineEditorHalf->WithMetadataValue('Version', '')->WithMetadataValue('Analyzer', 'true')->'%(Name)')"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+    <PackageReference Include="@(_EmptyEngineEditorHalf->HasMetadata('Version')->'%(Name)')" />
+  </ItemGroup>
+
+  <!-- ゲームを restore し、参照先が名乗るエディタ側を集める。 -->
+  <Target Name="EmptyEngineCollectEditorHalves"
+          BeforeTargets="_LoadRestoreGraphEntryPoints"
+          Condition="'$(EmptyEngineGameProject)' != ''">
+    <MSBuild Projects="$(EmptyEngineGameProject)"
+             Targets="Restore"
+             Properties="_EmptyEngineEditorHalvesPass=restore" />
+    <MSBuild Projects="$(EmptyEngineGameProject)"
+             Targets="EmptyEngineGetEditorHalves"
+             Properties="CustomBeforeMicrosoftCommonTargets=$(MSBuildThisFileFullPath);ExcludeRestorePackageImports=false;ImportProjectExtensionProps=true;ImportProjectExtensionTargets=true;_EmptyEngineEditorHalvesPass=query">
+      <Output TaskParameter="TargetOutputs" ItemName="_EmptyEngineCollectedHalf" />
+    </MSBuild>
+    <RemoveDuplicates Inputs="@(_EmptyEngineCollectedHalf->'%(Identity)|%(Version)|%(Analyzer)')">
+      <Output TaskParameter="Filtered" ItemName="_EmptyEngineCollectedHalfLine" />
+    </RemoveDuplicates>
+    <WriteLinesToFile File="$(_EmptyEngineEditorHalvesFile)"
+                      Lines="@(_EmptyEngineCollectedHalfLine)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+  </Target>
+
+</Project>

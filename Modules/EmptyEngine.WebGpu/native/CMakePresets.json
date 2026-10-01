@@ -1,0 +1,89 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "cacheVariables": {
+        "BUILD_SHARED_LIBS": "OFF",
+        "DAWN_FETCH_DEPENDENCIES": "ON",
+        "DAWN_BUILD_SAMPLES": "OFF",
+        "DAWN_USE_GLFW": "OFF",
+        "DAWN_ENABLE_VULKAN": "OFF",
+        "DAWN_ENABLE_DESKTOP_GL": "OFF",
+        "DAWN_ENABLE_OPENGLES": "OFF",
+        "DAWN_ENABLE_NULL": "OFF",
+        "TINT_BUILD_CMD_TOOLS": "OFF",
+        "TINT_BUILD_DOCS": "OFF",
+        "TINT_BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "windows-base",
+      "hidden": true,
+      "inherits": "base",
+      "generator": "Visual Studio 17 2022",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "windows-x64",
+      "inherits": "windows-base",
+      "binaryDir": "${sourceDir}/../../../.artifacts/dawn-build/windows-x64",
+      "architecture": "x64"
+    },
+    {
+      "name": "windows-arm64",
+      "inherits": "windows-base",
+      "binaryDir": "${sourceDir}/../../../.artifacts/dawn-build/windows-arm64",
+      "architecture": "ARM64"
+    },
+    {
+      "name": "macos-base",
+      "hidden": true,
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "11.0",
+        "DAWN_ENABLE_METAL": "ON",
+        "DAWN_ENABLE_D3D11": "OFF",
+        "DAWN_ENABLE_D3D12": "OFF"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    },
+    {
+      "name": "macos-arm64",
+      "inherits": "macos-base",
+      "binaryDir": "${sourceDir}/../../../.artifacts/dawn-build/macos-arm64",
+      "cacheVariables": { "CMAKE_OSX_ARCHITECTURES": "arm64" }
+    },
+    {
+      "name": "macos-x64",
+      "inherits": "macos-base",
+      "binaryDir": "${sourceDir}/../../../.artifacts/dawn-build/macos-x64",
+      "cacheVariables": { "CMAKE_OSX_ARCHITECTURES": "x86_64" }
+    },
+    {
+      "name": "ios-arm64",
+      "inherits": "macos-base",
+      "binaryDir": "${sourceDir}/../../../.artifacts/dawn-build/ios-arm64",
+      "generator": "Xcode",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": null,
+        "CMAKE_SYSTEM_NAME": "iOS",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_SYSROOT": "iphoneos",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0",
+        "DAWN_ENABLE_PIC": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "windows-x64-release", "configurePreset": "windows-x64", "configuration": "Release", "targets": ["emptyengine_webgpu_dawn"], "jobs": 0 },
+    { "name": "windows-arm64-release", "configurePreset": "windows-arm64", "configuration": "Release", "targets": ["emptyengine_webgpu_dawn"], "jobs": 0 },
+    { "name": "macos-arm64-release", "configurePreset": "macos-arm64", "targets": ["emptyengine_webgpu_dawn"], "jobs": 0 },
+    { "name": "macos-x64-release", "configurePreset": "macos-x64", "targets": ["emptyengine_webgpu_dawn"], "jobs": 0 },
+    { "name": "ios-arm64-release", "configurePreset": "ios-arm64", "configuration": "Release", "targets": ["emptyengine_webgpu_dawn"], "jobs": 0 }
+  ]
+}

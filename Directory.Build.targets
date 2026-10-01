@@ -1,0 +1,58 @@
+<Project>
+
+  <!-- プロジェクト直下の README.md をパッケージの readme として梱包する。 -->
+  <PropertyGroup Condition="'$(IsPackable)' != 'false'">
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <None Remove="README.md" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+
+  <!-- 隣にあるエディタ側とソース生成器を、このモジュールのエディタ側として名乗る。 -->
+  <PropertyGroup>
+    <_EmptyEngineEditorHalfProject>../$(MSBuildProjectName).Editor/$(MSBuildProjectName).Editor.csproj</_EmptyEngineEditorHalfProject>
+    <_EmptyEngineGeneratorProject>../$(MSBuildProjectName).Generator/$(MSBuildProjectName).Generator.csproj</_EmptyEngineGeneratorProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmptyEngineEditorHalf Include="$(_EmptyEngineEditorHalfProject)"
+                           Condition="Exists('$(MSBuildProjectDirectory)/$(_EmptyEngineEditorHalfProject)')" />
+    <EmptyEngineEditorHalf Include="$(_EmptyEngineGeneratorProject)"
+                           Analyzer="true"
+                           Condition="Exists('$(MSBuildProjectDirectory)/$(_EmptyEngineGeneratorProject)')" />
+  </ItemGroup>
+
+  <!-- パッケージの ID と版を返す。 -->
+  <Target Name="EmptyEngineGetPackageIdentity" Returns="@(_EmptyEnginePackageIdentity)">
+    <ItemGroup>
+      <_EmptyEnginePackageIdentity Include="$(PackageId)" Version="$(PackageVersion)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- 名乗ったエディタ側をパッケージの buildTransitive に書き出す。 -->
+  <PropertyGroup>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_EmptyEnginePackEditorHalves</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <Target Name="_EmptyEnginePackEditorHalves" Condition="'@(EmptyEngineEditorHalf)' != ''">
+    <MSBuild Projects="@(EmptyEngineEditorHalf)"
+             Targets="EmptyEngineGetPackageIdentity"
+             RemoveProperties="TargetFramework;RuntimeIdentifier">
+      <Output TaskParameter="TargetOutputs" ItemName="_EmptyEngineEditorHalfPackage" />
+    </MSBuild>
+    <PropertyGroup>
+      <_EmptyEngineEditorHalfProps>$(IntermediateOutputPath)$(PackageId).props</_EmptyEngineEditorHalfProps>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_EmptyEngineEditorHalfProps)"
+                      Lines="&lt;Project&gt;;  &lt;ItemGroup&gt;;@(_EmptyEngineEditorHalfPackage->'    &lt;EmptyEngineEditorHalf Include=&quot;%(Identity)&quot; Version=&quot;%(Version)&quot; /&gt;');  &lt;/ItemGroup&gt;;&lt;/Project&gt;"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(_EmptyEngineEditorHalfProps)" PackagePath="buildTransitive/$(PackageId).props" />
+    </ItemGroup>
+  </Target>
+
+</Project>
