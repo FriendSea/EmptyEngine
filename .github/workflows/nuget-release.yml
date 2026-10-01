@@ -1,6 +1,5 @@
 # NuGet パッケージを生成・検証して公開する。
 # PR の検証へ公開権限を渡さないよう、検証専用ワークフローと分離する。
-
 name: Publish NuGet packages
 
 on:
