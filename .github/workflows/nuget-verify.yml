@@ -1,5 +1,4 @@
 # 未公開パッケージを生成・検証する。公開は nuget-release.yml が行う。
-
 name: Verify NuGet packages
 
 on:
