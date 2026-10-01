@@ -1,6 +1,5 @@
 # 全プラットフォーム共通の VSIX を生成して GitHub Releases へ公開する。
 # dry run では成果物のみ作成する。バージョンは package.json から取得する。
-
 name: Release VSCode extension
 
 on:
