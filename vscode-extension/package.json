@@ -3,7 +3,7 @@
   "displayName": "EmptyEngine Host",
   "description": "Shows the EmptyEngine editor (the local web UI served by the Host) inside VSCode",
   "//": "この version がリリースの番号の正。拡張（.vsix）と Host（EmptyEngine.Host）で共有していて、Core/EmptyEngine.Host/EmptyEngine.Host.csproj がここを読む。git のタグは公開の記録として、リリースの workflow が後から打つ（v1.2.3 と EmptyEngine.Host/1.2.3）。上げるのは変更と同じ PR で。",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "publisher": "FriendSea",
   "license": "MIT",
   "private": true,
