@@ -1,4 +1,5 @@
 using EmptyEngine.Core.RuntimeLink;
+using EmptyEngine.Editor.Assets;
 using EmptyEngine.Editor.Distribution;
 using Microsoft.Extensions.Logging;
 
@@ -9,6 +10,12 @@ internal static class EditorEnvironment
 {
     /// <summary>ソースアセット（インポート元）のルートの宣言キー</summary>
     public const string AssetsRootKey = "EmptyEngine.AssetsRoot";
+
+    /// <summary>アセットを同梱するパッケージの名前を <c>;</c> で並べたものの宣言キー</summary>
+    public const string AssetPackagesKey = "EmptyEngine.AssetPackages";
+
+    /// <summary>アセットを同梱するパッケージ 1 つ分の宣言キーの前置き</summary>
+    public const string AssetPackageKeyPrefix = "EmptyEngine.AssetPackage.";
 
     /// <summary>配布ビルドのコマンドを走らせる場所の宣言キー</summary>
     public const string BuildWorkingDirectoryKey = "EmptyEngine.BuildWorkingDirectory";
@@ -55,6 +62,31 @@ internal static class EditorEnvironment
     /// <summary>宣言されたソースアセットルート（絶対パス）</summary>
     public static string? AssetsRoot =>
         Read(AssetsRootKey) is { Length: > 0 } assets ? Path.GetFullPath(assets) : null;
+
+    /// <summary>参照先のパッケージが宣言した、同梱ソースアセットの置き場</summary>
+    /// <remarks>パスの無い宣言と、存在しないディレクトリはその 1 つだけ落として残りを使う</remarks>
+    public static IReadOnlyList<AssetSource> ReadPackageAssets(ILogger logger)
+    {
+        string? names = Read(AssetPackagesKey);
+        if (string.IsNullOrEmpty(names)) return [];
+
+        var packages = new List<AssetSource>();
+        foreach (string name in names.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string? path = Read($"{AssetPackageKeyPrefix}{name}.Path");
+            if (path is null || !Directory.Exists(path))
+            {
+                logger.LogWarning(
+                    "Package assets '{Name}' are declared in {PackagesKey} but their directory is missing ({Path}). Skipped.",
+                    name, AssetPackagesKey, path ?? "no path");
+                continue;
+            }
+
+            packages.Add(ProjectAssetLayout.Package(name, path));
+        }
+
+        return packages;
+    }
 
     /// <summary>配布ビルドを走らせる場所</summary>
     public static string BuildWorkingDirectory =>

@@ -23,20 +23,20 @@ public sealed class EditorFieldEditPersistenceTests : IDisposable
 
     private async Task<AssetImportService> ImportServiceWithHealthSceneAsync()
     {
-        var importer = new SceneAssetImporter(CatalogStub.Schemas);
+        var importer = new SceneAssetImporter(CatalogStub.Schemas, _catalog);
         var child = new HierarchyNode("obj", "Object", Array.Empty<HierarchyNode>(),
             AuthoringTestHelpers.Components(new TestHealth { Max = 100, Current = 10 }));
         var sceneRoot = new HierarchyNode("ignored", "MyScene", new[] { child });
         await importer.SaveAsync(sceneRoot, Path.Combine(_assetsRoot, "MyScene.scene"));
 
-        return new AssetImportService(_catalog, _assetsRoot, new IAssetImporter[] { importer });
+        return new AssetImportService(_catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { importer }, Path.Combine(_assetsRoot, ".import-stamps"));
     }
 
     [Fact]
     public async Task Field_edit_survives_stale_poll_and_is_persisted_on_save()
     {
         AssetImportService service = await ImportServiceWithHealthSceneAsync();
-        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service);
+        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, layout: new ProjectAssetLayout(_assetsRoot));
 
         HierarchyNode? saved = null;
         vm.SceneSaveRequested += (root, _) => saved = root;

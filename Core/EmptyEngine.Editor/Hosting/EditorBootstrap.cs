@@ -138,12 +138,19 @@ public static class EditorBootstrap
                 ?? throw new InvalidOperationException(
                     $"'{EditorEnvironment.AssetsRootKey}' is not declared. The game's *.Editor.targets must set " +
                     "GamePath and import EmptyEngine.Editor/build/EmptyEngine.Editor.targets (see EditorEnvironment).");
+            return new ProjectAssetLayout(
+                assetsRoot,
+                EditorEnvironment.ReadPackageAssets(provider.GetRequiredService<ILogger<ProjectAssetLayout>>()));
+        });
+        services.AddSingleton(provider =>
+        {
             var artifacts = provider.GetRequiredService<EditorArtifacts>();
             var imports = new AssetImportService(
                 provider.GetRequiredService<AssetCatalog>(),
-                assetsRoot, provider.GetServices<IAssetImporter>(),
-                provider.GetRequiredService<ILogger<AssetImportService>>(),
-                stampRootPath: EditorEnvironment.ImportStampsDirectory);
+                provider.GetRequiredService<ProjectAssetLayout>().Sources,
+                provider.GetServices<IAssetImporter>(),
+                EditorEnvironment.ImportStampsDirectory,
+                provider.GetRequiredService<ILogger<AssetImportService>>());
             imports.SetArtifacts(artifacts);
             return imports;
         });
@@ -151,7 +158,7 @@ public static class EditorBootstrap
             CreateSingle<ISceneArtifactStore>(provider, new DistributionRoot(exeDir)),
             CreateSingle<IAssetArtifactStore>(provider, new DistributionRoot(exeDir))));
         services.AddSingleton(provider => new DistributionPipeline(
-            provider.GetRequiredService<AssetImportService>().AssetsRootPath,
+            provider.GetRequiredService<ProjectAssetLayout>().AssetsRootPath,
             provider.GetRequiredService<EditorArtifacts>(),
             provider.GetRequiredService<Func<string, EditorArtifacts>>(),
             provider.GetRequiredService<IDistributionBuilder>(),
@@ -170,7 +177,8 @@ public static class EditorBootstrap
         services.AddSingleton(provider => EditorWebRunner.CreateSceneClient(
             provider.GetRequiredService<EditorViewModel>(), provider.GetRequiredService<EditorDispatcher>(),
             provider.GetRequiredService<IHierarchyBlobSerializer>(), provider.GetRequiredService<AssetCatalog>(),
-            provider.GetRequiredService<AssetImportService>(), provider.GetRequiredService<EditHistoryViewModel>(),
+            provider.GetRequiredService<AssetImportService>(), provider.GetRequiredService<ProjectAssetLayout>(),
+            provider.GetRequiredService<EditHistoryViewModel>(),
             provider.GetRequiredService<EditHistoryStore>(),
             provider.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(EditorWebRunner)),
             provider.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping));

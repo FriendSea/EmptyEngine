@@ -33,12 +33,12 @@ public sealed class EditorAssetReferenceEditPersistenceTests : IDisposable
             """);
 
         var catalog = new AssetCatalog();
-        var service = new AssetImportService(catalog, _assetsRoot, new IAssetImporter[] { new TypedAssetImporter(CatalogStub.Schemas) });
+        var service = new AssetImportService(catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { new TypedAssetImporter(CatalogStub.Schemas) }, Path.Combine(_assetsRoot, ".import-stamps"));
         await service.ImportAllAsync();
         string key = catalog.EnumerateAssets().Single().Key.Value;
 
         var logs = new RecordingLogger<EditorViewModel>();
-        var vm = EditorFixture.NewEditor(assets: catalog, imports: service, logger: logs);
+        var vm = EditorFixture.NewEditor(assets: catalog, imports: service, logger: logs, layout: new ProjectAssetLayout(_assetsRoot));
 
         vm.SelectAsset(new AssetKey(key));
 
@@ -71,13 +71,13 @@ public sealed class EditorAssetReferenceEditPersistenceTests : IDisposable
         }
 
         var catalog = new AssetCatalog();
-        var service = new AssetImportService(catalog, _assetsRoot, new IAssetImporter[] { new TypedAssetImporter(CatalogStub.Schemas) });
+        var service = new AssetImportService(catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { new TypedAssetImporter(CatalogStub.Schemas) }, Path.Combine(_assetsRoot, ".import-stamps"));
         await service.ImportAllAsync();
 
         string SourceKey(string fileName) =>
             catalog.EnumerateAssets().Single(a => a.DisplayPath.Contains(fileName)).Key.Value;
 
-        var vm = EditorFixture.NewEditor(assets: catalog, imports: service);
+        var vm = EditorFixture.NewEditor(assets: catalog, imports: service, layout: new ProjectAssetLayout(_assetsRoot));
 
         vm.SelectAsset(new AssetKey(SourceKey("Source")));
         vm.Asset.Inspected!.Fields.Single(f => f.Name == "idle").AssignAssetReference(new AssetKey("copied-sprite"));

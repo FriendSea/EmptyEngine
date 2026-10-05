@@ -22,15 +22,19 @@ internal static class EditorFixture
         EditorStateStore? state = null,
         EditHistoryViewModel? history = null,
         TypeCatalog? catalog = null,
-        ILogger<EditorViewModel>? logger = null)
+        ILogger<EditorViewModel>? logger = null,
+        ProjectAssetLayout? layout = null)
     {
-        if ((assets is null) != (imports is null))
-            throw new ArgumentException("Pass the asset catalog together with the import service that writes into it.");
+        if ((assets is null) != (imports is null) || (imports is null) != (layout is null))
+            throw new ArgumentException(
+                "Pass the asset catalog, the import service that writes into it and the layout it imports from together.");
 
         assets ??= new AssetCatalog();
+        layout ??= new ProjectAssetLayout(Scratch());
         return new EditorViewModel(
             assets,
-            imports ?? new AssetImportService(assets, Scratch(), []),
+            imports ?? new AssetImportService(assets, layout.Sources, [], Path.Combine(Scratch(), "import-stamps")),
+            layout,
             serializer ?? new HierarchyBlobSerializer(CatalogStub.Schemas),
             state ?? new EditorStateStore(Path.Combine(Scratch(), "editor-state.json")),
             history ?? new EditHistoryViewModel(),

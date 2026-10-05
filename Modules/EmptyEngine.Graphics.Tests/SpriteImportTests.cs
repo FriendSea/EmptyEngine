@@ -35,7 +35,7 @@ public sealed class SpriteImportTests
                 """);
 
             AssetImportResult result = await new SpriteImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(spritePath, "Player.sprite", dir));
+                .ImportAsync(new AssetImportRequest(spritePath, "Player.sprite"));
 
             Assert.True(result.Success, result.Message);
             ImportedSource element = Assert.Single(result.Assets);
@@ -74,7 +74,7 @@ public sealed class SpriteImportTests
                 """);
 
             AssetImportResult result = await new SpriteImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(spritePath, "Atlas.sprite", dir));
+                .ImportAsync(new AssetImportRequest(spritePath, "Atlas.sprite"));
 
             Assert.True(result.Success, result.Message);
             Assert.Equal(2, result.Assets.Count);
@@ -111,7 +111,7 @@ public sealed class SpriteImportTests
                 """);
 
             AssetImportResult result = await new SpriteImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(spritePath, "Bad.sprite", dir));
+                .ImportAsync(new AssetImportRequest(spritePath, "Bad.sprite"));
 
             Assert.False(result.Success);
             Assert.Empty(result.Assets);
@@ -132,7 +132,7 @@ public sealed class SpriteImportTests
             await File.WriteAllTextAsync(spritePath, """{ "texture": "tex-key", "sprites": [ { } ] }""");
 
             AssetImportResult result = await new SpriteImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(spritePath, "Bare.sprite", dir));
+                .ImportAsync(new AssetImportRequest(spritePath, "Bare.sprite"));
 
             ImportedSource element = Assert.Single(result.Assets);
             Assert.Equal(string.Empty, element.LocalId);
@@ -171,7 +171,7 @@ public sealed class SpriteImportTests
             await File.WriteAllTextAsync(spritePath + ".meta", $$"""{"guid":"{{sourceGuid}}"}""");
 
             var catalog = new AssetCatalog();
-            var service = new AssetImportService(catalog, dir, new IAssetImporter[] { new SpriteImporter(CatalogStub.Schemas) });
+            var service = new AssetImportService(catalog, new ProjectAssetLayout(dir).Sources, new IAssetImporter[] { new SpriteImporter(CatalogStub.Schemas) }, Path.Combine(dir, ".import-stamps"));
             await service.ImportAllAsync();
 
             var entries = catalog.EnumerateAssets().ToList();

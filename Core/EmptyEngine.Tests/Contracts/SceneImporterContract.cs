@@ -47,7 +47,7 @@ public abstract class SceneImporterContract
     {
         string sourcePath = Path.Combine(root, SceneRelativePath.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
-        var request = new AssetImportRequest(sourcePath, SceneRelativePath, root);
+        var request = new AssetImportRequest(sourcePath, SceneRelativePath);
         return (sourcePath, request);
     }
 

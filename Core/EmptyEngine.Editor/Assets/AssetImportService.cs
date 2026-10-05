@@ -4,11 +4,18 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace EmptyEngine.Editor.Assets;
 
+/// <summary>ソースアセットの置き場 1 つ</summary>
+/// <param name="Path">置き場の実パス</param>
+/// <param name="DisplayName">表示パスの前置き。空ならこの置き場からの相対パスがそのまま表示パスになる。</param>
+/// <param name="IsReadOnly"><c>true</c> の置き場へは何も書き込まない。</param>
+public sealed record AssetSource(string Path, string DisplayName, bool IsReadOnly = false);
+
 public sealed class AssetImportService
 {
     private const string MetaExtension = ".meta";
 
     private readonly AssetCatalog _catalog;
+    private readonly AssetSource[] _sources;
     private readonly IReadOnlyDictionary<string, IAssetImporter> _importersByExtension;
     private readonly ILogger _logger;
     private readonly string _stampRoot;
@@ -16,22 +23,25 @@ public sealed class AssetImportService
     private readonly SemaphoreSlim _importGate = new(1, 1);
     private EditorArtifacts? _artifacts;
     private HashSet<string> _catalogFingerprint = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _reportedMissingMeta = new(StringComparer.OrdinalIgnoreCase);
 
     /// <param name="catalog">取り込み結果の書き込み先</param>
+    /// <param name="sources">取り込むソースアセットの置き場</param>
+    /// <param name="stampRootPath">取り込みスタンプの置き場</param>
     public AssetImportService(
         AssetCatalog catalog,
-        string assetsRootPath,
+        IEnumerable<AssetSource> sources,
         IEnumerable<IAssetImporter> importers,
+        string stampRootPath,
         ILogger<AssetImportService>? logger = null,
-        string? stampRootPath = null,
         IFileIdentity? fileIdentity = null)
     {
         _catalog = catalog;
+        _sources = sources
+            .Select(source => source with { Path = Path.GetFullPath(source.Path) })
+            .ToArray();
         _fileIdentity = fileIdentity ?? new NativeFileIdentity();
-        AssetsRootPath = Path.GetFullPath(assetsRootPath);
-        _stampRoot = stampRootPath is not null
-            ? Path.GetFullPath(stampRootPath)
-            : Path.Combine(AssetsRootPath, ".import-stamps");
+        _stampRoot = Path.GetFullPath(stampRootPath);
         _logger = logger ?? NullLogger<AssetImportService>.Instance;
 
         var map = new Dictionary<string, IAssetImporter>(StringComparer.OrdinalIgnoreCase);
@@ -49,7 +59,25 @@ public sealed class AssetImportService
     /// <summary>アーティファクトを書き換えたときのキー集合の通知</summary>
     public event Action<IReadOnlyCollection<string>>? ArtifactsChanged;
 
-    public string AssetsRootPath { get; }
+    /// <summary>取り込むソースアセットの置き場</summary>
+    public IReadOnlyList<AssetSource> Sources => _sources;
+
+    /// <summary>ソースごとの guid を決め、カタログの guid からの引き当てを作り直す</summary>
+    private Dictionary<string, string> IndexSources(IReadOnlyList<string> files)
+    {
+        var guidByFile = files.ToDictionary(f => f, ArtifactKeyFor, StringComparer.OrdinalIgnoreCase);
+        var sourceByGuid = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach ((string file, string guid) in guidByFile) sourceByGuid[guid] = file;
+        _catalog.SetSources(sourceByGuid);
+        return guidByFile;
+    }
+
+    /// <summary>ファイルを含む置き場（入れ子のときは最も深いもの）</summary>
+    private AssetSource? SourceOf(string fullPath) =>
+        _sources.Where(source => IsUnder(source.Path, fullPath)).MaxBy(source => source.Path.Length);
+
+    private static bool IsUnder(string directory, string fullPath) =>
+        fullPath.StartsWith(EnsureTrailingSeparator(directory), StringComparison.OrdinalIgnoreCase);
 
     public void SetArtifacts(EditorArtifacts artifacts) => _artifacts = artifacts;
 
@@ -72,31 +100,6 @@ public sealed class AssetImportService
     /// <summary>その役ができるインポータが拡張子に結び付いているか</summary>
     public bool HasImporter<T>(string extension) where T : class, IAssetImporter =>
         TryGetImporter<T>(extension, out _);
-
-    /// <summary>アセットルート配下のフォルダ（ルート基準の相対パスで、先頭の空文字はルート自身）</summary>
-    /// <remarks>ドットで始まるフォルダは出さない</remarks>
-    public IReadOnlyList<string> EnumerateFolders()
-    {
-        if (!Directory.Exists(AssetsRootPath)) return Array.Empty<string>();
-
-        var folders = new List<string> { string.Empty };
-        folders.AddRange(Directory.EnumerateDirectories(AssetsRootPath, "*", SearchOption.AllDirectories)
-            .Select(dir => Path.GetRelativePath(AssetsRootPath, dir).Replace('\\', '/'))
-            .Where(relative => !relative.StartsWith('.') && !relative.Contains("/."))
-            .OrderBy(relative => relative, StringComparer.OrdinalIgnoreCase));
-        return folders;
-    }
-
-    /// <summary>アセットルート基準の相対フォルダの絶対パス化</summary>
-    /// <remarks>空とルートの外を指すものはルート自身へ丸める</remarks>
-    public string ResolveFolder(string? relativeFolder)
-    {
-        string root = Path.GetFullPath(AssetsRootPath);
-        if (string.IsNullOrWhiteSpace(relativeFolder)) return root;
-
-        string full = Path.GetFullPath(Path.Combine(root, relativeFolder.Replace('/', Path.DirectorySeparatorChar)));
-        return full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ? full : root;
-    }
 
     /// <summary>全アセットの再インポート</summary>
     public Task<IReadOnlyList<AssetImportResult>> ImportAllAsync(CancellationToken cancellationToken = default) =>
@@ -122,13 +125,14 @@ public sealed class AssetImportService
 
     private async Task<IReadOnlyList<AssetImportResult>> ImportInternalAsync(bool force, CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(AssetsRootPath);
+        foreach (AssetSource source in _sources.Where(source => !source.IsReadOnly))
+            Directory.CreateDirectory(source.Path);
 
         string[] files = EnumerateImportableFiles();
 
         RecoverMovedSources(files);
 
-        var baseGuidByFile = files.ToDictionary(f => f, ArtifactKeyFor, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> baseGuidByFile = IndexSources(files);
         HashSet<string> deletedKeys = CleanupDeletedSources(
             baseGuidByFile.Values.ToHashSet(StringComparer.OrdinalIgnoreCase), cancellationToken);
 
@@ -183,7 +187,7 @@ public sealed class AssetImportService
 
         _logger.LogInformation(
             "Asset import finished. assets={Assets}, reimported={Reimported}, source={Source}",
-            importedAssets.Count, results.Count, AssetsRootPath);
+            importedAssets.Count, results.Count, string.Join(';', _sources.Select(source => source.Path)));
         if (results.Count > 0 || deletedKeys.Count > 0) ArtifactsChanged?.Invoke(updatedKeys);
         return results;
     }
@@ -195,7 +199,12 @@ public sealed class AssetImportService
         string sourcePath, CancellationToken cancellationToken)
     {
         string fullPath = Path.GetFullPath(sourcePath);
+        if (!HasUsableGuid(fullPath))
+            return AssetImportResult.Failed($"No .meta next to read-only source: {fullPath}");
+
         RecoverMovedSources(new[] { fullPath });
+        string[] files = EnumerateImportableFiles();
+        Dictionary<string, string> baseGuidByFile = IndexSources(files);
         AssetImportResult result = await ImportOneAsync(fullPath, ArtifactKeyFor(fullPath), cancellationToken);
         if (result.Success)
         {
@@ -213,8 +222,6 @@ public sealed class AssetImportService
 
         if (result.Success)
         {
-            string[] files = EnumerateImportableFiles();
-            var baseGuidByFile = files.ToDictionary(f => f, ArtifactKeyFor, StringComparer.OrdinalIgnoreCase);
             var updatedKeys = result.Assets.Select(a => a.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var processedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { fullPath };
             List<AssetImportResult> cascaded = await ReimportDependentsAsync(
@@ -233,11 +240,30 @@ public sealed class AssetImportService
     }
 
     private string[] EnumerateImportableFiles() =>
-        Directory.Exists(AssetsRootPath)
-            ? Directory.EnumerateFiles(AssetsRootPath, "*", SearchOption.AllDirectories)
-                .Where(path => _importersByExtension.ContainsKey(NormalizeExtension(Path.GetExtension(path))))
-                .ToArray()
-            : Array.Empty<string>();
+        _sources.Select(source => source.Path)
+            .Where(Directory.Exists)
+            .SelectMany(directory => Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+            .Where(path => _importersByExtension.ContainsKey(NormalizeExtension(Path.GetExtension(path))))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(HasUsableGuid)
+            .ToArray();
+
+    /// <summary>guid を決められるソースか</summary>
+    /// <remarks>読み取り専用の置き場へは <c>.meta</c> を書けないので、同梱されていないソースは取り込まない</remarks>
+    private bool HasUsableGuid(string fullPath)
+    {
+        if (SourceOf(fullPath) is not { IsReadOnly: true }) return true;
+        if (IsSafeArtifactId(TryReadGuid(fullPath + MetaExtension))) return true;
+
+        if (_reportedMissingMeta.Add(fullPath))
+        {
+            _logger.LogWarning(
+                "Skipped {Asset}: it is in a read-only source and has no .meta. Ship the .meta next to it.",
+                RelativeKey(fullPath));
+        }
+
+        return false;
+    }
 
     private async Task<List<AssetImportResult>> ReimportDependentsAsync(
         IReadOnlyList<string> files,
@@ -281,9 +307,9 @@ public sealed class AssetImportService
     private async Task<AssetImportResult> ImportOneAsync(string sourcePath, string baseGuid, CancellationToken cancellationToken)
     {
         string fullPath = Path.GetFullPath(sourcePath);
-        if (!fullPath.StartsWith(EnsureTrailingSeparator(AssetsRootPath), StringComparison.OrdinalIgnoreCase))
+        if (SourceOf(fullPath) is null)
         {
-            AssetImportResult failure = AssetImportResult.Failed($"Skip outside assets root: {fullPath}");
+            AssetImportResult failure = AssetImportResult.Failed($"Skip outside asset sources: {fullPath}");
             _logger.LogWarning("Import failed {Path}: {Error}", fullPath, failure.Message);
             return failure;
         }
@@ -297,7 +323,7 @@ public sealed class AssetImportService
         }
 
         string relative = RelativeKey(fullPath);
-        var request = new AssetImportRequest(fullPath, relative, AssetsRootPath);
+        var request = new AssetImportRequest(fullPath, relative);
 
         try
         {
@@ -356,7 +382,9 @@ public sealed class AssetImportService
     /// <summary><c>.meta</c> を失ったソースの元 guid への繋ぎ直し</summary>
     private void RecoverMovedSources(IReadOnlyList<string> files)
     {
-        var unclaimed = files.Where(f => !File.Exists(f + MetaExtension)).ToList();
+        var unclaimed = files
+            .Where(f => SourceOf(f) is { IsReadOnly: false } && !File.Exists(f + MetaExtension))
+            .ToList();
         if (unclaimed.Count == 0) return;
 
         var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -424,10 +452,10 @@ public sealed class AssetImportService
         }
     }
 
+    /// <summary>書き込める置き場の <c>.meta</c></summary>
     private IEnumerable<string> EnumerateMetaFiles() =>
-        Directory.Exists(AssetsRootPath)
-            ? Directory.EnumerateFiles(AssetsRootPath, "*" + MetaExtension, SearchOption.AllDirectories)
-            : Array.Empty<string>();
+        _sources.Where(source => !source.IsReadOnly && Directory.Exists(source.Path))
+            .SelectMany(source => Directory.EnumerateFiles(source.Path, "*" + MetaExtension, SearchOption.AllDirectories));
 
     /// <summary>移動復元後にも生きたソースを持たない stamp とその成果物を取り除く</summary>
     private HashSet<string> CleanupDeletedSources(
@@ -556,8 +584,17 @@ public sealed class AssetImportService
         string stampPath = StampPath(artifactKey);
         if (!File.Exists(stampPath)) return true;
         if (ReadStampEntries(artifactKey).Count == 0) return true;
-        return File.GetLastWriteTimeUtc(sourceFullPath) > File.GetLastWriteTimeUtc(stampPath);
+        if (File.GetLastWriteTimeUtc(sourceFullPath) > File.GetLastWriteTimeUtc(stampPath)) return true;
+
+        // 読み取り専用の置き場（パッケージ）は、版を替えると更新時刻がスタンプより古いまま中身が入れ替わる。
+        return SourceOf(sourceFullPath) is { IsReadOnly: true } && !MatchesStampedIdentity(sourceFullPath, stampPath);
     }
+
+    private bool MatchesStampedIdentity(string sourceFullPath, string stampPath) =>
+        TryReadStampIdentity(stampPath) is { } stamped
+        && ReadIdentity(sourceFullPath) is { } current
+        && stamped.Size == current.Size
+        && stamped.ModifiedTicks == current.ModifiedTicks;
 
     private const string StampDependencyPrefix = "dep:";
 
@@ -609,24 +646,31 @@ public sealed class AssetImportService
 
         foreach (string stampPath in Directory.EnumerateFiles(_stampRoot, "*.stamp"))
         {
-            try
-            {
-                string? line = File.ReadLines(stampPath)
-                    .FirstOrDefault(l => l.StartsWith(StampIdentityPrefix, StringComparison.Ordinal));
-                if (line is null) continue;
-
-                string[] parts = line[StampIdentityPrefix.Length..].Split('\t');
-                if (parts.Length != 3) continue;
-                if (!long.TryParse(parts[1], out long size) || !long.TryParse(parts[2], out long ticks)) continue;
-
-                map[Path.GetFileNameWithoutExtension(stampPath)] = new SourceIdentity(parts[0], size, ticks);
-            }
-            catch
-            {
-            }
+            if (TryReadStampIdentity(stampPath) is { } identity)
+                map[Path.GetFileNameWithoutExtension(stampPath)] = identity;
         }
 
         return map;
+    }
+
+    private static SourceIdentity? TryReadStampIdentity(string stampPath)
+    {
+        try
+        {
+            string? line = File.ReadLines(stampPath)
+                .FirstOrDefault(l => l.StartsWith(StampIdentityPrefix, StringComparison.Ordinal));
+            if (line is null) return null;
+
+            string[] parts = line[StampIdentityPrefix.Length..].Split('\t');
+            if (parts.Length != 3) return null;
+            if (!long.TryParse(parts[1], out long size) || !long.TryParse(parts[2], out long ticks)) return null;
+
+            return new SourceIdentity(parts[0], size, ticks);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private IReadOnlyList<string> ReadStampDependencies(string baseGuid)
@@ -691,8 +735,14 @@ public sealed class AssetImportService
         }
     }
 
-    private string RelativeKey(string fullPath) =>
-        Path.GetRelativePath(AssetsRootPath, Path.GetFullPath(fullPath)).Replace('\\', '/');
+    private string RelativeKey(string fullPath)
+    {
+        string full = Path.GetFullPath(fullPath);
+        if (SourceOf(full) is not { } source) return Path.GetFileName(full);
+
+        string relative = Path.GetRelativePath(source.Path, full).Replace('\\', '/');
+        return source.DisplayName.Length == 0 ? relative : source.DisplayName + "/" + relative;
+    }
 
     private bool IsSceneSource(string relativeOrPath)
     {

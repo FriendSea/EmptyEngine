@@ -28,11 +28,11 @@ public sealed class EditorStartupLoadTests : IDisposable
 
     private async Task<AssetImportService> ImportServiceWithSceneAsync(string sceneName)
     {
-        var importer = new SceneAssetImporter(CatalogStub.Schemas);
+        var importer = new SceneAssetImporter(CatalogStub.Schemas, _catalog);
         var sceneRoot = new HierarchyNode("ignored", sceneName, new[] { new HierarchyNode("obj", "Object") });
         await importer.SaveAsync(sceneRoot, Path.Combine(_assetsRoot, sceneName + ".scene"));
 
-        var service = new AssetImportService(_catalog, _assetsRoot, new IAssetImporter[] { importer });
+        var service = new AssetImportService(_catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { importer }, Path.Combine(_assetsRoot, ".import-stamps"));
         return service;
     }
 
@@ -40,7 +40,7 @@ public sealed class EditorStartupLoadTests : IDisposable
     public async Task Initialize_loads_startup_scene_and_makes_it_saveable()
     {
         AssetImportService service = await ImportServiceWithSceneAsync("MyScene");
-        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service);
+        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, layout: new ProjectAssetLayout(_assetsRoot));
 
         IReadOnlyList<HierarchyNode>? sent = null;
         vm.ScenePublished += p => sent = p.Roots;
@@ -64,7 +64,7 @@ public sealed class EditorStartupLoadTests : IDisposable
         AssetImportService service = await ImportServiceWithSceneAsync("MyScene");
         var serializer = new HierarchyBlobSerializer(CatalogStub.Schemas);
         var history = new EditHistoryViewModel();
-        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, serializer: serializer, history: history);
+        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, serializer: serializer, history: history, layout: new ProjectAssetLayout(_assetsRoot));
 
         // UpdateHierarchy（ランタイムからの返信）は一度も呼ばない。
         await vm.InitializeAsync();
@@ -88,7 +88,7 @@ public sealed class EditorStartupLoadTests : IDisposable
         {
             Assert.True(_catalog.TryGetSourcePath(key, out string? sourcePath));
             HierarchyNode snapshot = Assert.Single(serializer.Deserialize(serializer.Serialize([root])));
-            saving = new SceneAssetImporter(CatalogStub.Schemas).SaveAsync(snapshot, sourcePath!);
+            saving = new SceneAssetImporter(CatalogStub.Schemas, _catalog).SaveAsync(snapshot, sourcePath!);
         };
         vm.SelectedNode = vm.RootNodes[0];
         Assert.True(vm.CanSaveScene);
@@ -97,10 +97,7 @@ public sealed class EditorStartupLoadTests : IDisposable
         await saving;
 
         var reopenedCatalog = new AssetCatalog();
-        var reopened = EditorFixture.NewEditor(
-            assets: reopenedCatalog,
-            imports: new AssetImportService(reopenedCatalog, _assetsRoot, [new SceneAssetImporter(CatalogStub.Schemas)]),
-            serializer: serializer);
+        var reopened = EditorFixture.NewEditor(assets: reopenedCatalog, imports: new AssetImportService(reopenedCatalog, new ProjectAssetLayout(_assetsRoot).Sources, [new SceneAssetImporter(CatalogStub.Schemas, _catalog)], Path.Combine(_assetsRoot, ".import-stamps")), serializer: serializer, layout: new ProjectAssetLayout(_assetsRoot));
         await reopened.InitializeAsync();
         Assert.Equal("Authored", Assert.Single(Assert.Single(reopened.RootNodes).Children).Name);
     }
@@ -112,7 +109,7 @@ public sealed class EditorStartupLoadTests : IDisposable
         string statePath = Path.Combine(_assetsRoot, "state", "editor-state.json");
         var store = new EditorStateStore(statePath);
 
-        var first = EditorFixture.NewEditor(assets: _catalog, imports: service, state: store);
+        var first = EditorFixture.NewEditor(assets: _catalog, imports: service, state: store, layout: new ProjectAssetLayout(_assetsRoot));
         await first.InitializeAsync();
 
         HierarchyNodeViewModel firstRoot = Assert.Single(first.RootNodes);
@@ -125,10 +122,7 @@ public sealed class EditorStartupLoadTests : IDisposable
         Assert.Equal(new[] { firstRoot.ObjectId }, store.State.ExpandedHierarchyObjects[sceneKey]);
 
         var restoredStore = new EditorStateStore(statePath);
-        var restored = EditorFixture.NewEditor(
-            assets: _catalog,
-            imports: service,
-            state: restoredStore);
+        var restored = EditorFixture.NewEditor(assets: _catalog, imports: service, state: restoredStore, layout: new ProjectAssetLayout(_assetsRoot));
         await restored.InitializeAsync();
 
         HierarchyNodeViewModel restoredRoot = Assert.Single(restored.RootNodes);
@@ -145,7 +139,7 @@ public sealed class EditorStartupLoadTests : IDisposable
     {
         AssetImportService service = await ImportServiceWithSceneAsync("MyScene");
 
-        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service);
+        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, layout: new ProjectAssetLayout(_assetsRoot));
 
         await vm.InitializeAsync();
         string sceneKey = _catalog.EnumerateAssets().Single().Key.Value;
@@ -236,7 +230,7 @@ public sealed class EditorStartupLoadTests : IDisposable
     public async Task Loaded_scene_controls_identify_add_and_unload_scene_instances()
     {
         AssetImportService service = await ImportServiceWithSceneAsync("MyScene");
-        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service);
+        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, layout: new ProjectAssetLayout(_assetsRoot));
         await vm.InitializeAsync();
 
         string key = _catalog.EnumerateAssets().Single().Key.Value;
@@ -258,7 +252,7 @@ public sealed class EditorStartupLoadTests : IDisposable
     public async Task Polling_is_ignored_until_initial_load_then_accepted()
     {
         AssetImportService service = await ImportServiceWithSceneAsync("MyScene");
-        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service);
+        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, layout: new ProjectAssetLayout(_assetsRoot));
 
         await vm.InitializeAsync();
         HierarchyNodeViewModel startupRoot = Assert.Single(vm.RootNodes);

@@ -6,12 +6,13 @@ namespace EmptyEngine.Editor.ViewModels.Inspector;
 
 /// <summary>インスペクタが映しているアセット 1 つ分</summary>
 /// <remarks>アセットを表示している間は、ヒエラルキーで選択したオブジェクトのインスペクタを表示しない。
-/// <see cref="IAssetImporter.IsSaveSupported"/> が <c>false</c> のアセットは読み取り専用になる。
+/// <see cref="IAssetImporter.IsSaveSupported"/> が <c>false</c> のアセットと、パッケージ同梱のアセットは読み取り専用になる。
 /// 編集はソースファイルへ保存され、シーンの undo 履歴には含まれない。</remarks>
 public sealed class AssetInspectorViewModel : ViewModelBase, IAsyncDisposable
 {
     private readonly AssetCatalog _assets;
     private readonly AssetImportService _imports;
+    private readonly ProjectAssetLayout _layout;
     private readonly ILogger _logger;
 
     private string? _key;
@@ -36,10 +37,13 @@ public sealed class AssetInspectorViewModel : ViewModelBase, IAsyncDisposable
 
     /// <param name="assets">取り込み済みアセットのカタログ</param>
     /// <param name="imports">ソースアセットの取り込み</param>
-    public AssetInspectorViewModel(AssetCatalog assets, AssetImportService imports, ILogger logger)
+    /// <param name="layout">アセットルートとパッケージの配置</param>
+    public AssetInspectorViewModel(
+        AssetCatalog assets, AssetImportService imports, ProjectAssetLayout layout, ILogger logger)
     {
         _assets = assets;
         _imports = imports;
+        _layout = layout;
         _logger = logger;
         _save = new AssetSaveQueue(logger);
     }
@@ -178,7 +182,9 @@ public sealed class AssetInspectorViewModel : ViewModelBase, IAsyncDisposable
             return;
         }
 
-        string targetDir = Path.GetDirectoryName(originalPath) ?? _imports.AssetsRootPath;
+        string targetDir = _layout.IsReadOnlySource(originalPath)
+            ? _layout.AssetsRootPath
+            : Path.GetDirectoryName(originalPath) ?? _layout.AssetsRootPath;
         string path = UniquePath(targetDir, Path.GetFileNameWithoutExtension(originalPath) + "Variant", ".variant");
 
         try
@@ -256,7 +262,8 @@ public sealed class AssetInspectorViewModel : ViewModelBase, IAsyncDisposable
             && _imports.TryGetImporter(
                 AssetImportService.NormalizeExtension(Path.GetExtension(sourcePath)),
                 out IAssetImporter? importer)
-            && importer is { IsSaveSupported: true })
+            && importer is { IsSaveSupported: true }
+            && !_layout.IsReadOnlySource(sourcePath))
         {
             _editableImporter = importer;
             _editableSourcePath = sourcePath;

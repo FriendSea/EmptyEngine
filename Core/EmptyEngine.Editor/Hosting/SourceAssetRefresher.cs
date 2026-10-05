@@ -16,7 +16,7 @@ internal sealed class SourceAssetRefresher : IDisposable
 
     private readonly Cooldown _check = new(TimeSpan.FromSeconds(1));
 
-    private SourceAssetWatcher? _watcher;
+    private List<SourceAssetWatcher>? _watchers;
     private bool _checkInProgress;
     private bool _recheckRequested;
 
@@ -48,10 +48,13 @@ internal sealed class SourceAssetRefresher : IDisposable
     /// <summary>ソースアセットの監視の開始</summary>
     public void StartWatching()
     {
-        _watcher ??= SourceAssetWatcher.TryStart(
-            _imports.AssetsRootPath,
-            () => _dispatcher.Post(() => _ = RefreshIfChangedAsync(immediate: true)),
-            _logger);
+        _watchers ??= _imports.Sources
+            .Select(source => SourceAssetWatcher.TryStart(
+                source.Path,
+                () => _dispatcher.Post(() => _ = RefreshIfChangedAsync(immediate: true)),
+                _logger))
+            .OfType<SourceAssetWatcher>()
+            .ToList();
     }
 
     /// <summary>ソースアセットの変更の取り込みとツリーの組み直し</summary>
@@ -92,6 +95,6 @@ internal sealed class SourceAssetRefresher : IDisposable
 
     public void Dispose()
     {
-        _watcher?.Dispose();
+        foreach (SourceAssetWatcher watcher in _watchers ?? []) watcher.Dispose();
     }
 }

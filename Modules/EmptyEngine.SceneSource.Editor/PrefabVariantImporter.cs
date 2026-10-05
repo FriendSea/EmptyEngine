@@ -1,12 +1,13 @@
 using System.Collections.Concurrent;
 using EmptyEngine.Editor;
+using EmptyEngine.Editor.Assets;
 using EmptyEngine.Editor.Authoring;
 
 namespace EmptyEngine.SceneSource.Editor;
 
 /// <summary>プレハブバリアント（<c>.variant</c>）のシーンインポーター</summary>
-/// <remarks>オリジナルは <c>.meta</c> の guid で参照する。guid が引けない場合はアセットルート基準の相対パスとしても解決する</remarks>
-public sealed class PrefabVariantImporter(ISchemaSource schemas) : IVariantImporter
+/// <remarks>オリジナルは <c>.meta</c> の guid で参照する</remarks>
+public sealed class PrefabVariantImporter(ISchemaSource schemas, AssetCatalog sources) : IVariantImporter
 {
     private readonly ConcurrentDictionary<string, string> _originalPathByVariant = new(StringComparer.OrdinalIgnoreCase);
 
@@ -24,21 +25,21 @@ public sealed class PrefabVariantImporter(ISchemaSource schemas) : IVariantImpor
         string json = await File.ReadAllTextAsync(request.SourcePath, cancellationToken);
         PrefabVariantCodec.VariantData variant = PrefabVariantCodec.FromJson(json, schemas);
 
-        if (!MetaGuidLocator.TryResolve(request.AssetsRootPath, request.SourcePath, variant.Original, out string? originalPath))
+        if (sources.FindSourcePath(variant.Original) is not { } originalPath)
             return AssetImportResult.Failed(
                 $"Cannot resolve original prefab '{variant.Original}' for variant {request.RelativePath}");
 
-        _originalPathByVariant[Path.GetFullPath(request.SourcePath)] = originalPath!;
+        _originalPathByVariant[Path.GetFullPath(request.SourcePath)] = originalPath;
 
         HierarchyNode original = SceneJsonCodec.FromJson(
-            await File.ReadAllTextAsync(originalPath!, cancellationToken), schemas);
+            await File.ReadAllTextAsync(originalPath, cancellationToken), schemas);
         HierarchyNode merged = PrefabVariantCodec.Merge(
             original, schemas, variant.Overrides, variant.AddedComponents, variant.AddedChildren);
 
         var asset = new ImportedScene(request.RelativePath, merged, request.SourcePath);
         return AssetImportResult.Succeeded($"Imported variant {request.RelativePath} of {variant.Original}", asset) with
         {
-            Dependencies = [MetaGuidLocator.TryReadGuidOf(originalPath!) ?? variant.Original],
+            Dependencies = [variant.Original],
         };
     }
 
@@ -49,7 +50,7 @@ public sealed class PrefabVariantImporter(ISchemaSource schemas) : IVariantImpor
             : string.Empty;
 
         if (!_originalPathByVariant.TryGetValue(Path.GetFullPath(filePath), out string? originalPath))
-            MetaGuidLocator.TryResolve(preferredRoot: null, filePath, originalRef, out originalPath);
+            originalPath = sources.FindSourcePath(originalRef);
 
         IReadOnlyList<PrefabVariantCodec.FieldOverride> overrides;
         IReadOnlyList<PrefabVariantCodec.ComponentAddition> addedComponents;

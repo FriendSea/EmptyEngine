@@ -61,7 +61,7 @@ public sealed class ShaderParamsInspectorTests : IDisposable
     private (AssetCatalog Catalog, AssetImportService Service) Service(string assets, string artifacts, string stamps)
     {
         var catalog = new AssetCatalog();
-        var service = new AssetImportService(catalog, assets, [new ShaderImporter(CatalogStub.Schemas)], stampRootPath: stamps);
+        var service = new AssetImportService(catalog, new ProjectAssetLayout(assets).Sources, [new ShaderImporter(CatalogStub.Schemas)], stamps);
         service.SetArtifacts(TestArtifacts.At(artifacts));
         return (catalog, service);
     }

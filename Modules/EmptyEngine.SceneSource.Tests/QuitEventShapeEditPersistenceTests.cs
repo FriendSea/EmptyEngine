@@ -33,17 +33,17 @@ public sealed class QuitEventShapeEditPersistenceTests : IDisposable
             { "TypeName": "EmptyEngine.SceneSource.Tests.TestQuitLikeEvent", "Data": {} }
             """);
 
-        var sceneImporter = new SceneAssetImporter(CatalogStub.Schemas);
+        var catalog = new AssetCatalog();
+        var sceneImporter = new SceneAssetImporter(CatalogStub.Schemas, catalog);
         var sceneRoot = new HierarchyNode("root", "StageSelect", Array.Empty<HierarchyNode>());
         await sceneImporter.SaveAsync(sceneRoot, Path.Combine(_assetsRoot, "StageSelect.scene"));
 
-        var catalog = new AssetCatalog();
-        var service = new AssetImportService(catalog, _assetsRoot, new IAssetImporter[] { new TypedAssetImporter(CatalogStub.Schemas), sceneImporter });
+        var service = new AssetImportService(catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { new TypedAssetImporter(CatalogStub.Schemas), sceneImporter }, Path.Combine(_assetsRoot, ".import-stamps"));
         await service.ImportAllAsync();
         string key = catalog.EnumerateAssets().Single(e => e.DisplayPath.EndsWith("Quit.asset")).Key.Value;
 
         var logs = new RecordingLogger<EditorViewModel>();
-        var vm = EditorFixture.NewEditor(assets: catalog, imports: service, logger: logs);
+        var vm = EditorFixture.NewEditor(assets: catalog, imports: service, logger: logs, layout: new ProjectAssetLayout(_assetsRoot));
 
         vm.SelectAsset(new AssetKey(key));
 

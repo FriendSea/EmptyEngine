@@ -279,6 +279,7 @@ internal static class EditorWebRunner
         IHierarchyBlobSerializer serializer,
         AssetCatalog catalog,
         AssetImportService assetImportService,
+        ProjectAssetLayout layout,
         EditHistoryViewModel history,
         EditHistoryStore historyStore,
         ILogger logger,
@@ -318,6 +319,12 @@ internal static class EditorWebRunner
             if (!catalog.TryGetSourcePath(key, out string? sourcePath) || sourcePath is null) return;
             if (!assetImportService.TryGetImporter(Path.GetExtension(sourcePath), out IAssetImporter? importer)
                 || importer is not ISceneImporter sceneImporter) return;
+            if (layout.IsReadOnlySource(sourcePath))
+            {
+                logger.LogWarning(
+                    "Scene not saved: {Key} belongs to a package and is read-only. Create a variant to change it.", key);
+                return;
+            }
 
             // sceneRoot は VM から切り離された写しなので、列に積んで後から書いてよい
             sceneSaveQueue.Writer.TryWrite(async operationCancellationToken =>

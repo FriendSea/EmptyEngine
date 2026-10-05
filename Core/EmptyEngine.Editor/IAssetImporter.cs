@@ -40,8 +40,7 @@ public interface INestedPrefabImporter : ISceneImporter
 
 public sealed record AssetImportRequest(
     string SourcePath,
-    string RelativePath,
-    string AssetsRootPath);
+    string RelativePath);
 
 /// <summary>取り込み結果 1 件の身元（アセットでもシーンでも共通）</summary>
 public abstract record ImportedSource(string RelativePath, string SourcePath)
