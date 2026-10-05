@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <Version>0.4.0</Version>
+    <Version>0.5.0</Version>
     <!-- 同梱する Dawn と Abseil のライセンスを含める。 -->
     <PackageLicenseExpression>MIT AND BSD-3-Clause AND Apache-2.0</PackageLicenseExpression>
     <ImplicitUsings>enable</ImplicitUsings>
