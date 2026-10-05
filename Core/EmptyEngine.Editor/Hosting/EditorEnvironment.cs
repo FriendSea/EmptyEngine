@@ -1,3 +1,4 @@
+using EmptyEngine.Core;
 using EmptyEngine.Core.RuntimeLink;
 using EmptyEngine.Editor.Assets;
 using EmptyEngine.Editor.Distribution;
@@ -25,6 +26,9 @@ internal static class EditorEnvironment
 
     /// <summary>この UI を iframe に入れてよい相手を <c>;</c> で並べたものの宣言キー</summary>
     public const string FrameAncestorsKey = "EmptyEngine.FrameAncestors";
+
+    /// <summary>シーンから辿れなくても配布するアセットのキーを <c>;</c> で並べたものの宣言キー</summary>
+    public const string DistributionRootsKey = "EmptyEngine.DistributionRoots";
 
     /// <summary>ビルド 1 つ分の宣言キーの前置き</summary>
     public const string BuildKeyPrefix = "EmptyEngine.Build.";
@@ -96,6 +100,12 @@ internal static class EditorEnvironment
 
     /// <summary>この UI を iframe に入れてよいと宣言された相手</summary>
     public static string? FrameAncestors => Read(FrameAncestorsKey);
+
+    /// <summary>起動シーンと並べて、配布の到達の起点にするアセット</summary>
+    public static IReadOnlyList<AssetKey> DistributionRoots =>
+        [.. (Read(DistributionRootsKey) ?? string.Empty)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(key => new AssetKey(key))];
 
     /// <summary>宣言された配布ビルドの宣言順の読み出し</summary>
     /// <remarks>書き損じ（コマンドの無いビルド等）はそのビルドだけ落として残りを使う</remarks>

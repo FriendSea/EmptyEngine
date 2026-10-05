@@ -35,6 +35,20 @@
       <Output TaskParameter="Filtered" ItemName="_EmptyEngineAssetRoot" />
     </RemoveDuplicates>
 
+    <!-- シーンから辿れなくても配布するアセットを、同じ 2 つの経路で集める。 -->
+    <MSBuild Projects="@(ProjectReference)"
+             Targets="EmptyEngineGetDistributionRoots"
+             SkipNonexistentTargets="true"
+             Condition="'@(ProjectReference)' != ''">
+      <Output TaskParameter="TargetOutputs" ItemName="_EmptyEngineDistributionRootAll" />
+    </MSBuild>
+    <ItemGroup>
+      <_EmptyEngineDistributionRootAll Include="@(DistributionRoot)" />
+    </ItemGroup>
+    <RemoveDuplicates Inputs="@(_EmptyEngineDistributionRootAll)">
+      <Output TaskParameter="Filtered" ItemName="_EmptyEngineDistributionRoot" />
+    </RemoveDuplicates>
+
     <Error Condition="'@(_EmptyEngineAssetRoot)' != '' and '%(_EmptyEngineAssetRoot.Name)' == ''"
            Text="EmptyEngineAssetRoot '%(_EmptyEngineAssetRoot.Identity)' needs a Name (e.g. &lt;EmptyEngineAssetRoot Include=&quot;%24(MSBuildThisFileDirectory)../assets&quot; Name=&quot;MyPackage&quot; /&gt;). It is shown as Packages/&lt;Name&gt;/ in the editor." />
 
@@ -62,6 +76,10 @@
       <RuntimeHostConfigurationOption Include="EmptyEngine.Build.%(DistributionBuild.Identity).DeployBeforeBuild"
                                       Value="%(DistributionBuild.DeployBeforeBuild)"
                                       Condition="'@(DistributionBuild)' != '' and '%(DistributionBuild.DeployBeforeBuild)' != ''" />
+
+      <RuntimeHostConfigurationOption Include="EmptyEngine.DistributionRoots"
+                                      Value="@(_EmptyEngineDistributionRoot, ';')"
+                                      Condition="'@(_EmptyEngineDistributionRoot)' != ''" />
 
       <RuntimeHostConfigurationOption Include="EmptyEngine.FrameAncestors"
                                       Value="@(EditorFrameAncestor, ';')"

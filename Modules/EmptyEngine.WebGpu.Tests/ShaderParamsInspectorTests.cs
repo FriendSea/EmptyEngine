@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Xml.Linq;
 using EmptyEngine.Modules.Testing;
 using EmptyEngine.Core;
 using EmptyEngine.Editor;
@@ -121,13 +123,32 @@ public sealed class ShaderParamsInspectorTests : IDisposable
         Assert.Equal("texture-key", textureValues.Items[0].ReferenceKey);
     }
 
-    /// <summary>未設定（nil）で届いたテクスチャ枠にも代入できる</summary>
+    /// <summary>同梱の既定シェーダは、コードが持つキーで取り込まれ、同じキーが配布の起点として宣言されている</summary>
     [Fact]
-    public void Assigning_to_a_texture_slot_that_arrived_unset_lands()
+    public async Task Shipped_shaders_import_under_the_keys_the_components_resolve()
     {
+        AssetCatalog catalog = await ShippedShadersAsync();
+
+        string[] keys = [BuiltinShaders.Sprite, BuiltinShaders.Mesh, BuiltinShaders.Line];
+        Assert.All(keys, key => Assert.Equal(typeof(ShaderAsset).FullName, catalog.GetAsset(key)?.TypeName));
+        Assert.Equal(
+            keys,
+            XDocument.Load(Path.Combine(ShippedPath(), "..", "buildTransitive", "EmptyEngine.WebGpu.Editor.props"))
+                .Descendants("DistributionRoot").Select(root => root.Attribute("Include")!.Value));
+        Assert.Equal(
+            ["Packages/EmptyEngine.WebGpu/Line.wgsl", "Packages/EmptyEngine.WebGpu/Mesh.wgsl", "Packages/EmptyEngine.WebGpu/Sprite.wgsl"],
+            catalog.EnumerateAssets().Select(entry => entry.DisplayPath).Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>未設定（nil）で届いたテクスチャ枠にも代入できる</summary>
+    /// <remarks>シェーダ未指定のメッシュの枠は、同梱の既定シェーダが宣言するもの</remarks>
+    [Fact]
+    public async Task Assigning_to_a_texture_slot_that_arrived_unset_lands()
+    {
+        AssetCatalog catalog = await ShippedShadersAsync();
         AuthoringObject component = MeshWithUnsetTexture();
         AuthoringObjectViewModel viewModel = Component(component);
-        (_, FieldViewModel[] slots) = ShaderParamsInspector.BuildFields(viewModel, _ => null);
+        (_, FieldViewModel[] slots) = ShaderParamsInspector.BuildFields(viewModel, key => catalog.GetAsset(key.Value));
 
         FieldViewModel texture = Assert.Single(slots);
         texture.AssignAssetReference(new AssetKey("texture-key"));
@@ -136,7 +157,28 @@ public sealed class ShaderParamsInspectorTests : IDisposable
         Assert.Equal("texture-key", textures.Items[0].ReferenceKey);
     }
 
-    /// <summary>組み込みスロットを 1 つ持ち、その鍵が nil のメッシュ</summary>
+    /// <summary>モジュールが同梱する既定シェーダを、パッケージのアセットとして取り込んだカタログ</summary>
+    private async Task<AssetCatalog> ShippedShadersAsync()
+    {
+        string shipped = ShippedPath();
+        string assets = Path.Combine(_root, "Assets");
+        Directory.CreateDirectory(assets);
+
+        var catalog = new AssetCatalog();
+        var service = new AssetImportService(
+            catalog,
+            new ProjectAssetLayout(assets, [ProjectAssetLayout.Package("EmptyEngine.WebGpu", shipped)]).Sources,
+            [new ShaderImporter(CatalogStub.Schemas)],
+            Path.Combine(_root, "Stamps"));
+        service.SetArtifacts(TestArtifacts.At(Path.Combine(_root, "Artifacts")));
+        await service.ImportAllAsync();
+        return catalog;
+    }
+
+    private static string ShippedPath([CallerFilePath] string? thisFile = null) =>
+        Path.Combine(Path.GetDirectoryName(thisFile)!, "..", "EmptyEngine.WebGpu.Editor", "assets");
+
+    /// <summary>既定シェーダの枠を 1 つ持ち、その鍵が nil のメッシュ</summary>
     private static AuthoringObject MeshWithUnsetTexture()
     {
         var textures = new FieldValue();

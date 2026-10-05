@@ -15,12 +15,8 @@ public unsafe ref struct RenderContext
     /// <summary>アセット単位で共有するパイプラインとテクスチャ</summary>
     public GpuAssetCache Assets;
     public RenderPassEncoder* Pass;
-    public RenderPipeline* QuadPipeline;
     public WgpuBuffer* QuadVertexBuffer;
     public uint QuadVertexCount;
-
-    /// <summary>スプライト用 bind group のレイアウト</summary>
-    public BindGroupLayout* SpriteLayout;
 
     /// <summary>テクスチャ未設定スプライト用の 1x1 白テクスチャビュー</summary>
     public TextureView* DefaultTextureView;

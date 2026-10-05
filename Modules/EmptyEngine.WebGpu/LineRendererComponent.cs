@@ -17,26 +17,6 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
 
     private const int VertexFloats = 5;
 
-    private const string ShaderSource = """
-        struct Uniforms {
-            model_view: mat4x4<f32>,
-            projection: mat4x4<f32>,
-            color: vec4<f32>,
-            misc: vec4<f32>,
-        };
-        @group(0) @binding(0) var<uniform> u: Uniforms;
-
-        @vertex
-        fn vs_main(@location(0) position: vec3<f32>) -> @builtin(position) vec4<f32> {
-            return u.projection * u.model_view * vec4<f32>(position, 1.0);
-        }
-
-        @fragment
-        fn fs_main() -> @location(0) vec4<f32> {
-            return u.color;
-        }
-        """;
-
     private const float MiterLimit = 4f;
 
     private IObject? _owner;
@@ -52,10 +32,8 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
     private WgpuBuffer* _paramBuffer;
     private WgpuBuffer* _vertexBuffer;
     private int _vertexCapacity;
-    private RenderPipeline* _opaquePipeline;
-    private RenderPipeline* _transparentPipeline;
-    private PipelineLayout* _opaquePipelineLayout;
-    private PipelineLayout* _transparentPipelineLayout;
+    private RenderPipeline* _pipeline;
+    private PipelineLayout* _pipelineLayout;
     private BindGroupLayout* _bindGroupLayout;
     private BindGroup* _bindGroup;
     private Texture*[] _slotTextures = [];
@@ -92,14 +70,10 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
     public IObject? Owner => _owner;
 
     /// <inheritdoc/>
-    public bool IsTransparent => _resolvedShader is null
-        ? Color.A < 1f
-        : _renderQueue >= ShaderRenderQueue.Transparent;
+    public bool IsTransparent => _renderQueue >= ShaderRenderQueue.Transparent;
 
     /// <inheritdoc/>
-    public int RenderQueue => _resolvedShader is null
-        ? (Color.A < 1f ? ShaderRenderQueue.Transparent : ShaderRenderQueue.Geometry)
-        : _renderQueue;
+    public int RenderQueue => _renderQueue;
 
     /// <inheritdoc/>
     public Vector3 SortPosition
@@ -125,8 +99,6 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
     }
 
     private int ParamBufferSize => Math.Max(16, (((Params?.Length ?? 0) * sizeof(float)) + 15) & ~15);
-
-    private ShaderTextureSlot[] EffectiveTextureSlots => _resolvedShader?.TextureSlots ?? [];
 
     public void OnCreated(IObject owner)
     {
@@ -179,9 +151,9 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
     public void Render(in RenderContext context)
     {
         Vector3[] points = Points ?? [];
-        if (points.Length < 2 || Width <= 0f) return;
+        if (_resolvedShader is not { } shader || points.Length < 2 || Width <= 0f) return;
 
-        EnsureResources(in context);
+        EnsureResources(in context, shader);
 
         int vertexCount = BuildStrip(points, Width * 0.5f, MathF.Max(0f, CapExtension), out float totalLength);
         if (vertexCount < 3) return;
@@ -216,8 +188,7 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
                 WGPU.wgpuQueueWriteBuffer(context.Queue, _paramBuffer, 0, p, (nuint)(Params.Length * sizeof(float)));
         }
 
-        RenderPipeline* pipeline = IsTransparent ? _transparentPipeline : _opaquePipeline;
-        WGPU.wgpuRenderPassEncoderSetPipeline(context.Pass, pipeline);
+        WGPU.wgpuRenderPassEncoderSetPipeline(context.Pass, _pipeline);
         WGPU.wgpuRenderPassEncoderSetBindGroup(context.Pass, 0, _bindGroup, 0, null);
         _globals.Bind(in context);
         WGPU.wgpuRenderPassEncoderSetVertexBuffer(
@@ -307,7 +278,7 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
         context.Resources.Track(this, () => { if (_vertexBuffer is not null) { WGPU.wgpuBufferRelease(_vertexBuffer); _vertexBuffer = null; } });
     }
 
-    private void EnsureResources(in RenderContext context)
+    private void EnsureResources(in RenderContext context, ShaderAsset shader)
     {
         TextureAsset?[] resolvedSlots = _resolvedSlotTextures ?? [];
         if (_resourcesBuilt
@@ -318,48 +289,33 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
 
         _pool = context.Resources;
 
-        ShaderTextureSlot[] slots = EffectiveTextureSlots;
-        bool custom = _resolvedShader is not null;
+        ShaderTextureSlot[] slots = shader.TextureSlots ?? [];
 
-        if (custom)
-        {
-            ShaderAsset shader = _resolvedShader!;
-            string wgsl = SpriteRenderSupport.ReadShaderSource(shader);
-            ShaderDepthState fallback = ShaderBlend.IsOpaque(shader)
-                ? ShaderDepthState.Opaque
-                : ShaderDepthState.Transparent;
-            _shaderDepth = ShaderBlend.ResolveDepth(shader, fallback);
-            _renderQueue = ShaderBlend.ResolveRenderQueue(
-                shader,
-                ShaderBlend.IsOpaque(shader) ? ShaderRenderQueue.Geometry : ShaderRenderQueue.Transparent);
-            _bindGroupLayout = MeshRenderSupport.CreateShaderParamLayout(
-                in context, UniformSize, (ulong)ParamBufferSize, slots);
-            context.Resources.Track(this, () => { if (_bindGroupLayout is not null) { WGPU.wgpuBindGroupLayoutRelease(_bindGroupLayout); _bindGroupLayout = null; } });
-            _globals.Build(in context, shader, this);
-            var (blendColor, blendAlpha) = ShaderBlend.Resolve(shader);
-            BuildDepthPipelines(in context, wgsl, blendColor, blendAlpha);
+        string wgsl = SpriteRenderSupport.ReadShaderSource(shader);
+        ShaderDepthState fallback = ShaderBlend.IsOpaque(shader)
+            ? ShaderDepthState.Opaque
+            : ShaderDepthState.Transparent;
+        _shaderDepth = ShaderBlend.ResolveDepth(shader, fallback);
+        _renderQueue = ShaderBlend.ResolveRenderQueue(
+            shader,
+            ShaderBlend.IsOpaque(shader) ? ShaderRenderQueue.Geometry : ShaderRenderQueue.Transparent);
+        _bindGroupLayout = MeshRenderSupport.CreateShaderParamLayout(
+            in context, UniformSize, (ulong)ParamBufferSize, slots);
+        context.Resources.Track(this, () => { if (_bindGroupLayout is not null) { WGPU.wgpuBindGroupLayoutRelease(_bindGroupLayout); _bindGroupLayout = null; } });
+        _globals.Build(in context, shader, this);
+        var (blendColor, blendAlpha) = ShaderBlend.Resolve(shader);
+        _pipeline = CreateLinePipeline(
+            in context, wgsl, _bindGroupLayout, blendColor, blendAlpha,
+            out _pipelineLayout,
+            depthWrite: _shaderDepth.WriteEnabled,
+            depthCompare: _shaderDepth.Compare,
+            globalsLayout: _globals.Layout);
+        context.Resources.Track(this, () => { if (_pipeline is not null) { WGPU.wgpuRenderPipelineRelease(_pipeline); _pipeline = null; } });
+        context.Resources.Track(this, () => { if (_pipelineLayout is not null) { WGPU.wgpuPipelineLayoutRelease(_pipelineLayout); _pipelineLayout = null; } });
 
-            var paramDescriptor = new BufferDescriptor { Usage = BufferUsage.Uniform | BufferUsage.CopyDst, Size = (ulong)ParamBufferSize };
-            _paramBuffer = WGPU.wgpuDeviceCreateBuffer(context.Device, &paramDescriptor);
-            context.Resources.Track(this, () => { if (_paramBuffer is not null) { WGPU.wgpuBufferRelease(_paramBuffer); _paramBuffer = null; } });
-        }
-        else
-        {
-            _shaderDepth = ShaderDepthState.Opaque;
-            _renderQueue = ShaderRenderQueue.Geometry;
-            var layoutEntry = new BindGroupLayoutEntry
-            {
-                Binding = 0,
-                Visibility = ShaderStage.Vertex | ShaderStage.Fragment,
-                Buffer = new BufferBindingLayout { Type = BufferBindingType.Uniform, MinBindingSize = UniformSize },
-            };
-            var layoutDescriptor = new BindGroupLayoutDescriptor { EntryCount = 1, Entries = &layoutEntry };
-            _bindGroupLayout = WGPU.wgpuDeviceCreateBindGroupLayout(context.Device, &layoutDescriptor);
-            context.Resources.Track(this, () => { if (_bindGroupLayout is not null) { WGPU.wgpuBindGroupLayoutRelease(_bindGroupLayout); _bindGroupLayout = null; } });
-
-            var (blendColor, blendAlpha) = SpriteRenderSupport.AlphaBlend;
-            BuildDepthPipelines(in context, ShaderSource, blendColor, blendAlpha);
-        }
+        var paramDescriptor = new BufferDescriptor { Usage = BufferUsage.Uniform | BufferUsage.CopyDst, Size = (ulong)ParamBufferSize };
+        _paramBuffer = WGPU.wgpuDeviceCreateBuffer(context.Device, &paramDescriptor);
+        context.Resources.Track(this, () => { if (_paramBuffer is not null) { WGPU.wgpuBufferRelease(_paramBuffer); _paramBuffer = null; } });
 
         var uniformDescriptor = new BufferDescriptor
         {
@@ -394,78 +350,14 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
             _slotTextures = [];
         });
 
-        if (custom)
-        {
-            _bindGroup = MeshRenderSupport.CreateShaderParamBindGroup(
-                in context, _bindGroupLayout, _uniformBuffer, UniformSize, context.DefaultSampler,
-                _paramBuffer, (ulong)ParamBufferSize, slotBindings, slotViews);
-        }
-        else
-        {
-            var bindGroupEntry = new BindGroupEntry { Binding = 0, Buffer = _uniformBuffer, Offset = 0, Size = UniformSize };
-            var bindGroupDescriptor = new BindGroupDescriptor { Layout = _bindGroupLayout, EntryCount = 1, Entries = &bindGroupEntry };
-            _bindGroup = WGPU.wgpuDeviceCreateBindGroup(context.Device, &bindGroupDescriptor);
-        }
+        _bindGroup = MeshRenderSupport.CreateShaderParamBindGroup(
+            in context, _bindGroupLayout, _uniformBuffer, UniformSize, context.DefaultSampler,
+            _paramBuffer, (ulong)ParamBufferSize, slotBindings, slotViews);
         context.Resources.Track(this, () => { if (_bindGroup is not null) { WGPU.wgpuBindGroupRelease(_bindGroup); _bindGroup = null; } });
 
         _realizedShader = _resolvedShader;
         _realizedSlotTextures = resolvedSlots;
         _resourcesBuilt = true;
-    }
-
-    private void BuildDepthPipelines(
-        in RenderContext context,
-        string wgsl,
-        in BlendComponent blendColor,
-        in BlendComponent blendAlpha)
-    {
-        // Honor custom ZWrite so transparent masks can still occlude geometry.
-        bool customDepthWrite = _resolvedShader is not null && _shaderDepth.WriteEnabled;
-        _opaquePipeline = CreateLinePipeline(
-            in context, wgsl, _bindGroupLayout, blendColor, blendAlpha,
-            out _opaquePipelineLayout,
-            depthWrite: _resolvedShader is null || customDepthWrite,
-            depthCompare: _shaderDepth.Compare,
-            globalsLayout: _globals.Layout);
-        context.Resources.Track(this, () =>
-        {
-            if (_opaquePipeline is not null)
-            {
-                WGPU.wgpuRenderPipelineRelease(_opaquePipeline);
-                _opaquePipeline = null;
-            }
-        });
-        context.Resources.Track(this, () =>
-        {
-            if (_opaquePipelineLayout is not null)
-            {
-                WGPU.wgpuPipelineLayoutRelease(_opaquePipelineLayout);
-                _opaquePipelineLayout = null;
-            }
-        });
-
-        _transparentPipeline = CreateLinePipeline(
-            in context, wgsl, _bindGroupLayout, blendColor, blendAlpha,
-            out _transparentPipelineLayout,
-            depthWrite: customDepthWrite,
-            depthCompare: _shaderDepth.Compare,
-            globalsLayout: _globals.Layout);
-        context.Resources.Track(this, () =>
-        {
-            if (_transparentPipeline is not null)
-            {
-                WGPU.wgpuRenderPipelineRelease(_transparentPipeline);
-                _transparentPipeline = null;
-            }
-        });
-        context.Resources.Track(this, () =>
-        {
-            if (_transparentPipelineLayout is not null)
-            {
-                WGPU.wgpuPipelineLayoutRelease(_transparentPipelineLayout);
-                _transparentPipelineLayout = null;
-            }
-        });
     }
 
     private static bool SlotTexturesMatch(TextureAsset?[]? realized, TextureAsset?[] resolved)
@@ -586,6 +478,7 @@ public sealed partial class LineRendererComponent
     public async ValueTask OnResolveAssetsAsync(IAssetResolver resolver)
     {
         await ResolveAssetFieldsAsync(resolver);
+        _resolvedShader ??= await resolver.ResolveAsync(new AssetReference<ShaderAsset>(BuiltinShaders.Line));
         Textures ??= [];
         if (_resolvedShader is not null)
             Textures = ShaderParamsHost.ReconcileTextures(_resolvedShader.TextureSlots, Textures);

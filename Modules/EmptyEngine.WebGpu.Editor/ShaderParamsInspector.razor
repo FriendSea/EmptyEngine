@@ -31,6 +31,7 @@
 
     private const string MeshComponentTypeId = "EmptyEngine.WebGpu.MeshComponent";
     private const string SpriteComponentTypeId = "EmptyEngine.WebGpu.SpriteComponent";
+    private const string LineRendererComponentTypeId = "EmptyEngine.WebGpu.LineRendererComponent";
     private const string ShaderAssetTypeId = "EmptyEngine.WebGpu.ShaderAsset";
 
     private const string ParamsField = "Params";
@@ -45,9 +46,6 @@
         Members = ColorChannels.ToDictionary(key => key, _ => new FieldTypeInfo("System.Single", FieldKind.Float32)),
         ColorChannels = ColorChannels,
     };
-
-    private static readonly ShaderTextureSlot[] MeshBuiltinSlots =
-        [new ShaderTextureSlot { Name = "Base Texture", Binding = 1 }];
 
     private FieldViewModel[] _parameters = [];
     private FieldViewModel[] _textures = [];
@@ -75,18 +73,25 @@
         Func<AssetKey, AuthoringObject?> tryGetAssetValue)
     {
         string shaderKey = component.Root.Get(ShaderField)?.AssetKey ?? string.Empty;
-        AuthoringObject? shader = ResolveShader(shaderKey, tryGetAssetValue);
+        AuthoringObject? shader = ResolveShader(shaderKey, tryGetAssetValue)
+            ?? ResolveShader(BuiltinShaderFor(component.TypeName), tryGetAssetValue);
 
         ShaderParam[] paramDefs = ReadParams(shader);
         ShaderTextureSlot[] slots = shader is not null
             ? ShaderSlotsFor(component.TypeName, ReadTextureSlots(shader))
-            : string.IsNullOrEmpty(shaderKey) ? BuiltinSlotsFor(component.TypeName) : [];
+            : [];
 
         return (BuildParams(component, paramDefs), BuildTextureSlots(component, slots));
     }
 
-    private static ShaderTextureSlot[] BuiltinSlotsFor(string typeName) =>
-        typeName == MeshComponentTypeId ? MeshBuiltinSlots : [];
+    /// <summary>シェーダ未指定のコンポーネントが実行時に使う既定シェーダ</summary>
+    private static string BuiltinShaderFor(string typeName) => typeName switch
+    {
+        SpriteComponentTypeId => BuiltinShaders.Sprite,
+        MeshComponentTypeId => BuiltinShaders.Mesh,
+        LineRendererComponentTypeId => BuiltinShaders.Line,
+        _ => string.Empty,
+    };
 
     private static ShaderTextureSlot[] ShaderSlotsFor(string typeName, ShaderTextureSlot[] slots) =>
         typeName == SpriteComponentTypeId ? slots.Where(slot => slot.Binding != 1).ToArray() : slots;

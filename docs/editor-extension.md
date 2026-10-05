@@ -114,6 +114,7 @@ For an example, see BevyRuntimeSample's [BevyTransformInspector.razor](../sample
 | `DistributionBuild` | Name of a distribution build and the command to run (`Command`). The output path is passed in as `{output}` |
 | `BuildWorkingPath` | Directory in which distribution build commands run. Required if you declare `DistributionBuild` |
 | `EditorFrameAncestor` | Origins allowed to embed the editor page. Required when opening the editor with the VS Code extension ([extension README](../vscode-extension/README.md#requirements)) |
+| `DistributionRoot` | Key of an asset to distribute even when no scene references it. Use it for assets that runtime code loads directly by key. Everything it references is distributed too |
 | `EmptyEngineAssetRoot` | Directory of source assets shipped in a package. Declared by the package itself (see below) |
 
 ### Assets shipped in packages

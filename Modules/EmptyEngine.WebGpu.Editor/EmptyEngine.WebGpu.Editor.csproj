@@ -17,4 +17,16 @@
     <InternalsVisibleTo Include="EmptyEngine.WebGpu.Tests" />
   </ItemGroup>
 
+  <!-- 同梱する既定シェーダ。パッケージへは .meta ごと梱包し、プロジェクト参照のエディタへはターゲットで場所を返す。 -->
+  <Import Project="buildTransitive\EmptyEngine.WebGpu.Editor.props" />
+
+  <ItemGroup>
+    <None Remove="assets\**\*;buildTransitive\**\*" />
+    <None Include="assets\**\*" Pack="true" PackagePath="assets\%(RecursiveDir)" />
+    <None Include="buildTransitive\EmptyEngine.WebGpu.Editor.props" Pack="true" PackagePath="buildTransitive\" />
+  </ItemGroup>
+
+  <Target Name="EmptyEngineGetAssetRoots" Returns="@(EmptyEngineAssetRoot->'%(FullPath)')" />
+  <Target Name="EmptyEngineGetDistributionRoots" Returns="@(DistributionRoot)" />
+
 </Project>

@@ -38,6 +38,15 @@ public sealed class ShaderAsset
     public ShaderDepthCompare DepthCompare { get; set; }
 }
 
+/// <summary>シェーダ未指定のコンポーネントが使う、同梱の既定シェーダのアセットキー</summary>
+/// <remarks>実体は EmptyEngine.WebGpu.Editor が同梱するソースアセット（<c>assets/*.wgsl</c>）。その <c>.meta</c> の guid と、props の <c>DistributionRoot</c> に同じ値を書く。</remarks>
+public static class BuiltinShaders
+{
+    public const string Sprite = "d73a34965e56402c81ae33d70b969657";
+    public const string Mesh = "84e640fe39354467b69a0ac4fa6d9e4b";
+    public const string Line = "7709483a8f3f41f99e7760f4c56f7777";
+}
+
 /// <summary>シェーダが要求するブレンド</summary>
 /// <remarks><c>Unspecified</c> はブレンド方法を指定しないことを表す。値はアセットの保存形式に含まれる。</remarks>
 public enum ShaderBlendMode

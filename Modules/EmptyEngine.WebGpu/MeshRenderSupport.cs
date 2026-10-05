@@ -8,16 +8,6 @@ namespace EmptyEngine.WebGpu;
 /// <summary>3D メッシュの描画に必要な GPU 資源を作成する</summary>
 internal static unsafe class MeshRenderSupport
 {
-    /// <summary>メッシュ用レンダーパイプラインの WGSL からの生成（不透明）</summary>
-    public static RenderPipeline* CreateMeshPipeline(
-        in RenderContext context,
-        string wgsl,
-        BindGroupLayout* bindGroupLayout,
-        out PipelineLayout* pipelineLayout)
-        => CreateMeshPipeline(
-            in context, wgsl, bindGroupLayout, blend: null,
-            depthWrite: true, CompareFunction.LessEqual, out pipelineLayout);
-
     /// <summary>メッシュ用レンダーパイプラインの WGSL からの生成</summary>
     public static RenderPipeline* CreateMeshPipeline(
         in RenderContext context,

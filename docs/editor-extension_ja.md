@@ -114,6 +114,7 @@
 | `DistributionBuild` | 配布ビルドの名前と、実行するコマンド（`Command`）。出力先は`{output}`で受け取ります |
 | `BuildWorkingPath` | 配布ビルドのコマンドを実行するディレクトリ。`DistributionBuild`を宣言した場合は必須です |
 | `EditorFrameAncestor` | エディタのページを埋め込めるオリジン。VSCode拡張で開く場合は必要です（[拡張のREADME](../vscode-extension/README.md#requirements)） |
+| `DistributionRoot` | シーンから参照されなくても配布するアセットのキー。ランタイムのコードがキーを直接持って読み込むアセットに使います。その参照先も配布されます |
 | `EmptyEngineAssetRoot` | パッケージが同梱するソースアセットのディレクトリ。パッケージの側で宣言します（下記） |
 
 ### パッケージに同梱するアセット
