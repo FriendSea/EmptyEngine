@@ -68,12 +68,12 @@ public sealed class StartupManifestTests
             string outputRoot = Path.Combine(projectDir, ".artifacts", "ImportedAssets");
             Directory.CreateDirectory(assetsRoot);
 
-            var importer = new SceneAssetImporter(CatalogStub.Schemas);
+            var catalog = new AssetCatalog();
+            var importer = new SceneAssetImporter(CatalogStub.Schemas, catalog);
             await importer.SaveAsync(MinimalScene("First"), Path.Combine(assetsRoot, "First.scene"));
             await importer.SaveAsync(MinimalScene("Second"), Path.Combine(assetsRoot, "Second.scene"));
 
-            var catalog = new AssetCatalog();
-            var service = new AssetImportService(catalog, assetsRoot, new IAssetImporter[] { importer });
+            var service = new AssetImportService(catalog, new ProjectAssetLayout(assetsRoot).Sources, new IAssetImporter[] { importer }, Path.Combine(assetsRoot, ".import-stamps"));
             service.SetArtifacts(TestArtifacts.At(outputRoot));
             await service.ImportAllAsync();
 

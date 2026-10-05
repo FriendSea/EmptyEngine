@@ -25,6 +25,7 @@ public sealed class DistributionPipeline
     private readonly EditorArtifacts _source;
     private readonly Func<string, EditorArtifacts> _createTarget;
     private readonly IDistributionBuilder _builder;
+    private readonly IReadOnlyList<AssetKey> _roots;
     private readonly ILogger _logger;
 
     private readonly string _workingDirectory;
@@ -45,6 +46,7 @@ public sealed class DistributionPipeline
 
         _workingDirectory = EditorEnvironment.BuildWorkingDirectory;
         Targets = EditorEnvironment.ReadBuilds(logger);
+        _roots = EditorEnvironment.DistributionRoots;
     }
 
     /// <summary>宣言されたビルド（宣言順）</summary>
@@ -67,7 +69,7 @@ public sealed class DistributionPipeline
     {
         List<AssetKey> scenes = [.. BuildSceneList.Read(_assetsRoot).Select(k => new AssetKey(k))];
         EditorArtifacts target = _createTarget(exeDirectory);
-        IReadOnlyList<string> deployed = DeployReachable(_source, target, scenes);
+        IReadOnlyList<string> deployed = DeployReachable(_source, target, [.. scenes, .. _roots]);
         _builder.Build(exeDirectory, scenes);
         _logger.LogInformation("Deployed {Count} reachable artifact(s) to {Directory}", deployed.Count, exeDirectory);
     }

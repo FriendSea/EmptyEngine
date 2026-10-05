@@ -47,11 +47,11 @@ public sealed class ReadOnlyAssetInspectorTests : IDisposable
     public async Task Selecting_a_read_only_asset_builds_its_fields_once()
     {
         var catalog = new AssetCatalog();
-        var service = new AssetImportService(catalog, _assetsRoot, [new ProbeImporter()]);
+        var service = new AssetImportService(catalog, new ProjectAssetLayout(_assetsRoot).Sources, [new ProbeImporter()], Path.Combine(_assetsRoot, ".import-stamps"));
         await File.WriteAllTextAsync(Path.Combine(_assetsRoot, "Probe.probe"), "probe");
         await service.ImportAllAsync();
 
-        var vm = EditorFixture.NewEditor(assets: catalog, imports: service);
+        var vm = EditorFixture.NewEditor(assets: catalog, imports: service, layout: new ProjectAssetLayout(_assetsRoot));
 
         Assert.Null(vm.Asset.Inspected);
 

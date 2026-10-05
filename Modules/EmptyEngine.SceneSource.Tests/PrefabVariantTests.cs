@@ -47,9 +47,9 @@ public sealed class PrefabVariantTests : IDisposable
         string variantPath = Path.Combine(_assetsRoot, "LowHealth.variant");
         await File.WriteAllTextAsync(variantPath, variantSource);
 
-        var importer = new PrefabVariantImporter(CatalogStub.Schemas);
+        var importer = new PrefabVariantImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
         AssetImportResult result = await importer.ImportAsync(
-            new AssetImportRequest(variantPath, "LowHealth.variant", _assetsRoot));
+            new AssetImportRequest(variantPath, "LowHealth.variant"));
 
         Assert.True(result.Success, result.Message);
         var root = AuthoringTestHelpers.SceneOf(result);
@@ -67,8 +67,8 @@ public sealed class PrefabVariantTests : IDisposable
         string variantPath = Path.Combine(_assetsRoot, "LowHealth.variant");
         await File.WriteAllTextAsync(variantPath, $"{{ \"Original\": \"{guid}\", \"Overrides\": [] }}");
 
-        var importer = new PrefabVariantImporter(CatalogStub.Schemas);
-        await importer.ImportAsync(new AssetImportRequest(variantPath, "LowHealth.variant", _assetsRoot));
+        var importer = new PrefabVariantImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
+        await importer.ImportAsync(new AssetImportRequest(variantPath, "LowHealth.variant"));
 
         var edited = new HierarchyNode("obj-root", "Health", new[]
         {
@@ -100,8 +100,8 @@ public sealed class PrefabVariantTests : IDisposable
         }
         """);
 
-        var importer = new PrefabVariantImporter(CatalogStub.Schemas);
-        var request = new AssetImportRequest(variantPath, "LowHealth.variant", _assetsRoot);
+        var importer = new PrefabVariantImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
+        var request = new AssetImportRequest(variantPath, "LowHealth.variant");
 
         var imported = AuthoringTestHelpers.SceneOf(await importer.ImportAsync(request));
         await importer.SaveAsync(imported, variantPath);
@@ -117,7 +117,7 @@ public sealed class PrefabVariantTests : IDisposable
     {
         (string guid, _) = WriteOriginal();
 
-        var importer = new PrefabVariantImporter(CatalogStub.Schemas);
+        var importer = new PrefabVariantImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
         string variantPath = Path.Combine(_assetsRoot, "HealthVariant.variant");
 
         await importer.CreateAsync(guid, variantPath);
@@ -126,7 +126,7 @@ public sealed class PrefabVariantTests : IDisposable
         Assert.Contains(guid, source);
 
         var root = AuthoringTestHelpers.SceneOf(await importer.ImportAsync(
-            new AssetImportRequest(variantPath, "HealthVariant.variant", _assetsRoot)));
+            new AssetImportRequest(variantPath, "HealthVariant.variant")));
         AuthoringObject health = root.Children.Single().Components.Single();
         Assert.Equal(100, AuthoringTestHelpers.GetInt(health, nameof(TestHealth.Current)));
         Assert.Equal(100, AuthoringTestHelpers.GetInt(health, nameof(TestHealth.Max)));
@@ -138,8 +138,8 @@ public sealed class PrefabVariantTests : IDisposable
         string variantPath = Path.Combine(_assetsRoot, "Orphan.variant");
         await File.WriteAllTextAsync(variantPath, "{ \"Original\": \"deadbeef\", \"Overrides\": [] }");
 
-        AssetImportResult result = await new PrefabVariantImporter(CatalogStub.Schemas).ImportAsync(
-            new AssetImportRequest(variantPath, "Orphan.variant", _assetsRoot));
+        AssetImportResult result = await new PrefabVariantImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot)).ImportAsync(
+            new AssetImportRequest(variantPath, "Orphan.variant"));
 
         Assert.False(result.Success);
     }

@@ -120,18 +120,14 @@ public sealed class EditorSceneReloadTests : IDisposable
     private AssetImportService CreateService()
     {
         string artifacts = Path.Combine(_assetsRoot, ".artifacts");
-        var service = new AssetImportService(
-            _catalog,
-            _assetsRoot,
-            new IAssetImporter[] { new SceneAssetImporter(CatalogStub.Schemas), new PrefabVariantImporter(CatalogStub.Schemas) },
-            stampRootPath: Path.Combine(artifacts, "import-stamps"));
+        var service = new AssetImportService(_catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { new SceneAssetImporter(CatalogStub.Schemas, _catalog), new PrefabVariantImporter(CatalogStub.Schemas, _catalog) }, Path.Combine(artifacts, "import-stamps"));
         service.SetArtifacts(TestArtifacts.At(Path.Combine(artifacts, "store")));
         return service;
     }
 
     private async Task<EditorViewModel> SetupInitializedViewModelAsync(AssetImportService service)
     {
-        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service);
+        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, layout: new ProjectAssetLayout(_assetsRoot));
         await vm.InitializeAsync();
         service.ArtifactsChanged += keys => vm.ReloadImportedScenes(keys);
         return vm;

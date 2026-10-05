@@ -48,17 +48,12 @@ public sealed class AssetFieldDropTests : IDisposable
     private async Task<EditorViewModel> SetupAsync()
     {
         string artifacts = Path.Combine(_assetsRoot, ".artifacts");
-        IAssetImporter[] importers = [new SceneAssetImporter(CatalogStub.Schemas), new TypedAssetImporter(CatalogStub.Schemas)];
         var catalog = new AssetCatalog();
-        var service = new AssetImportService(
-            catalog, _assetsRoot, importers, stampRootPath: Path.Combine(artifacts, "import-stamps"));
+        IAssetImporter[] importers = [new SceneAssetImporter(CatalogStub.Schemas, catalog), new TypedAssetImporter(CatalogStub.Schemas)];
+        var service = new AssetImportService(catalog, new ProjectAssetLayout(_assetsRoot).Sources, importers, Path.Combine(artifacts, "import-stamps"));
         service.SetArtifacts(TestArtifacts.At(Path.Combine(artifacts, "store")));
 
-        var vm = EditorFixture.NewEditor(
-            assets: catalog,
-            imports: service,
-            logger: _logs,
-            serializer: new HierarchyBlobSerializer(CatalogStub.Schemas));
+        var vm = EditorFixture.NewEditor(assets: catalog, imports: service, logger: _logs, serializer: new HierarchyBlobSerializer(CatalogStub.Schemas), layout: new ProjectAssetLayout(_assetsRoot));
         await vm.InitializeAsync();
         return vm;
     }

@@ -23,15 +23,15 @@ public sealed class EditorCopyPasteTests : IDisposable
 
     private async Task<EditorViewModel> LoadedEditorAsync()
     {
-        var importer = new SceneAssetImporter(CatalogStub.Schemas);
+        var catalog = new AssetCatalog();
+        var importer = new SceneAssetImporter(CatalogStub.Schemas, catalog);
         var child = new HierarchyNode("obj", "Object", Array.Empty<HierarchyNode>(),
             AuthoringTestHelpers.Components(new TestHealth { Max = 100, Current = 10 }));
         var sceneRoot = new HierarchyNode("ignored", "MyScene", new[] { child });
         await importer.SaveAsync(sceneRoot, Path.Combine(_assetsRoot, "MyScene.scene"));
 
-        var catalog = new AssetCatalog();
-        var service = new AssetImportService(catalog, _assetsRoot, new IAssetImporter[] { importer });
-        var vm = EditorFixture.NewEditor(assets: catalog, imports: service);
+        var service = new AssetImportService(catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { importer }, Path.Combine(_assetsRoot, ".import-stamps"));
+        var vm = EditorFixture.NewEditor(assets: catalog, imports: service, layout: new ProjectAssetLayout(_assetsRoot));
         await vm.InitializeAsync();
         return vm;
     }

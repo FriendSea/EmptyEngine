@@ -58,11 +58,7 @@ public sealed class MovedSourceImportTests : IDisposable
     private AssetImportService CreateService()
     {
         string artifacts = Path.Combine(_assetsRoot, ".artifacts");
-        var service = new AssetImportService(
-            _catalog,
-            _assetsRoot,
-            new IAssetImporter[] { new SceneAssetImporter(CatalogStub.Schemas) },
-            stampRootPath: Path.Combine(artifacts, "import-stamps"));
+        var service = new AssetImportService(_catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { new SceneAssetImporter(CatalogStub.Schemas, _catalog) }, Path.Combine(artifacts, "import-stamps"));
         service.SetArtifacts(TestArtifacts.At(Path.Combine(artifacts, "store")));
         return service;
     }

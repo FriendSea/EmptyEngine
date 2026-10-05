@@ -30,17 +30,17 @@ public sealed class EditorSessionHandoverTests : IDisposable
 
     private async Task<AssetImportService> ImportServiceWithSceneAsync(string sceneName)
     {
-        var importer = new SceneAssetImporter(CatalogStub.Schemas);
+        var importer = new SceneAssetImporter(CatalogStub.Schemas, _catalog);
         var sceneRoot = new HierarchyNode("ignored", sceneName, new[] { new HierarchyNode("obj", "Object") });
         await importer.SaveAsync(sceneRoot, Path.Combine(_assetsRoot, sceneName + ".scene"));
-        return new AssetImportService(_catalog, _assetsRoot, new IAssetImporter[] { importer });
+        return new AssetImportService(_catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { importer }, Path.Combine(_assetsRoot, ".import-stamps"));
     }
 
     private (EditorViewModel Vm, EditHistoryViewModel History, List<EditHistory> Committed) NewEditor(
         AssetImportService service, EditorStateStore? store = null)
     {
         var history = new EditHistoryViewModel();
-        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, state: store, history: history);
+        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, state: store, history: history, layout: new ProjectAssetLayout(_assetsRoot));
 
         var committed = new List<EditHistory>();
         history.HistoryChanged += committed.Add;

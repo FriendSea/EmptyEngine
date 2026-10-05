@@ -1,5 +1,4 @@
 ﻿using System.Numerics;
-using System.Runtime.InteropServices;
 using WgpuBuffer = EmptyEngine.WebGpu.Buffer;
 
 namespace EmptyEngine.WebGpu;
@@ -19,40 +18,6 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
          0.5f,  0.5f,    1f, 0f,
         -0.5f,  0.5f,    0f, 0f,
     };
-
-    private const string ShaderSource = """
-        struct Uniforms {
-            transform: mat4x4<f32>,
-            uvRect: vec4<f32>,
-            anim: vec4<f32>,
-            color: vec4<f32>,
-        };
-        @group(0) @binding(0) var<uniform> u: Uniforms;
-        @group(0) @binding(1) var tex: texture_2d<f32>;
-        @group(0) @binding(2) var samp: sampler;
-
-        struct VsOut {
-            @builtin(position) position: vec4<f32>,
-            @location(0) uv: vec2<f32>,
-            @location(1) color: vec4<f32>,
-        };
-
-        @vertex
-        fn vs_main(@location(0) position: vec2<f32>, @location(1) uv: vec2<f32>) -> VsOut {
-            var out: VsOut;
-            out.position = u.transform * vec4<f32>(position, 0.0, 1.0);
-            let frameCount = max(u.anim.z, 1.0);
-            let frame = floor(u.anim.x * u.anim.y) % frameCount;
-            out.uv = u.uvRect.xy + vec2<f32>(frame * u.uvRect.z, 0.0) + uv * u.uvRect.zw;
-            out.color = u.color;
-            return out;
-        }
-
-        @fragment
-        fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
-            return textureSample(tex, samp, in.uv) * in.color;
-        }
-        """;
 
     private const string BlitShaderSource = """
         @group(0) @binding(0) var tex: texture_2d<f32>;
@@ -83,14 +48,11 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private readonly GpuResourcePool _resources = new();
     private readonly GpuAssetCache _assets = new();
 
-    private RenderPipeline* _quadPipeline;
     private WgpuBuffer* _quadVertexBuffer;
     private Texture* _depthTexture;
     private TextureView* _depthTextureView;
     private uint _depthWidth;
     private uint _depthHeight;
-    private BindGroupLayout* _spriteLayout;
-    private PipelineLayout* _pipelineLayout;
     private Texture* _defaultTexture;
     private TextureView* _defaultTextureView;
     private Sampler* _sampler;
@@ -117,140 +79,12 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _device = device;
         _queue = queue;
         _format = format;
-        CreateQuadResources(format);
+        CreateQuadVertexBuffer();
         CreateDefaultTextureAndSampler();
     }
 
-    private void CreateQuadResources(TextureFormat format)
+    private void CreateQuadVertexBuffer()
     {
-        nint codePtr = Marshal.StringToCoTaskMemUTF8(ShaderSource);
-        nint vsEntry = Marshal.StringToCoTaskMemUTF8("vs_main");
-        nint fsEntry = Marshal.StringToCoTaskMemUTF8("fs_main");
-        try
-        {
-            var wgslDescriptor = new ShaderModuleWGSLDescriptor
-            {
-                Chain = new ChainedStruct { SType = SType.ShaderModuleWGSLDescriptor },
-                Code = (byte*)codePtr,
-            };
-            var shaderModuleDescriptor = new ShaderModuleDescriptor
-            {
-                NextInChain = (ChainedStruct*)&wgslDescriptor,
-            };
-            ShaderModule* shader = WGPU.wgpuDeviceCreateShaderModule(_device, &shaderModuleDescriptor);
-
-            var bindGroupLayoutEntries = stackalloc BindGroupLayoutEntry[3];
-            bindGroupLayoutEntries[0] = new BindGroupLayoutEntry
-            {
-                Binding = 0,
-                Visibility = ShaderStage.Vertex,
-                Buffer = new BufferBindingLayout
-                {
-                    Type = BufferBindingType.Uniform,
-                    MinBindingSize = 112,
-                },
-            };
-            bindGroupLayoutEntries[1] = new BindGroupLayoutEntry
-            {
-                Binding = 1,
-                Visibility = ShaderStage.Fragment,
-                Texture = new TextureBindingLayout
-                {
-                    SampleType = TextureSampleType.Float,
-                    ViewDimension = TextureViewDimension.Dimension2D,
-                    Multisampled = 0,
-                },
-            };
-            bindGroupLayoutEntries[2] = new BindGroupLayoutEntry
-            {
-                Binding = 2,
-                Visibility = ShaderStage.Fragment,
-                Sampler = new SamplerBindingLayout { Type = SamplerBindingType.Filtering },
-            };
-            var bindGroupLayoutDescriptor = new BindGroupLayoutDescriptor
-            {
-                EntryCount = 3,
-                Entries = bindGroupLayoutEntries,
-            };
-            _spriteLayout = WGPU.wgpuDeviceCreateBindGroupLayout(_device, &bindGroupLayoutDescriptor);
-
-            BindGroupLayout* spriteLayout = _spriteLayout;
-            var pipelineLayoutDescriptor = new PipelineLayoutDescriptor
-            {
-                BindGroupLayoutCount = 1,
-                BindGroupLayouts = &spriteLayout,
-            };
-            _pipelineLayout = WGPU.wgpuDeviceCreatePipelineLayout(_device, &pipelineLayoutDescriptor);
-
-            var vertexAttributes = stackalloc VertexAttribute[2];
-            vertexAttributes[0] = new VertexAttribute { Format = VertexFormat.Float32x2, Offset = 0, ShaderLocation = 0 };
-            vertexAttributes[1] = new VertexAttribute { Format = VertexFormat.Float32x2, Offset = sizeof(float) * 2, ShaderLocation = 1 };
-            var vertexBufferLayout = new VertexBufferLayout
-            {
-                ArrayStride = sizeof(float) * 4,
-                StepMode = VertexStepMode.Vertex,
-                AttributeCount = 2,
-                Attributes = vertexAttributes,
-            };
-            var vertexState = new VertexState
-            {
-                Module = shader,
-                EntryPoint = (byte*)vsEntry,
-                BufferCount = 1,
-                Buffers = &vertexBufferLayout,
-            };
-
-            var blendState = new BlendState
-            {
-                Color = new BlendComponent { SrcFactor = BlendFactor.SrcAlpha, DstFactor = BlendFactor.OneMinusSrcAlpha, Operation = BlendOperation.Add },
-                Alpha = new BlendComponent { SrcFactor = BlendFactor.One, DstFactor = BlendFactor.OneMinusSrcAlpha, Operation = BlendOperation.Add },
-            };
-            var colorTargetState = new ColorTargetState
-            {
-                Format = format,
-                Blend = &blendState,
-                WriteMask = ColorWriteMask.All,
-            };
-            var fragmentState = new FragmentState
-            {
-                Module = shader,
-                EntryPoint = (byte*)fsEntry,
-                TargetCount = 1,
-                Targets = &colorTargetState,
-            };
-
-            DepthStencilState depthState = SpriteRenderSupport.DepthTestNoWrite(DepthFormat);
-            var pipelineDescriptor = new RenderPipelineDescriptor
-            {
-                Layout = _pipelineLayout,
-                Vertex = vertexState,
-                Fragment = &fragmentState,
-                Primitive = new PrimitiveState
-                {
-                    Topology = PrimitiveTopology.TriangleList,
-                    StripIndexFormat = IndexFormat.Undefined,
-                    FrontFace = FrontFace.Ccw,
-                    CullMode = CullMode.None,
-                },
-                DepthStencil = &depthState,
-                Multisample = new MultisampleState
-                {
-                    Count = 1,
-                    Mask = ~0u,
-                    AlphaToCoverageEnabled = 0,
-                },
-            };
-            _quadPipeline = WGPU.wgpuDeviceCreateRenderPipeline(_device, &pipelineDescriptor);
-
-            WGPU.wgpuShaderModuleRelease(shader);
-        }
-        finally
-        {
-            Marshal.FreeCoTaskMem(codePtr);
-            Marshal.FreeCoTaskMem(vsEntry);
-            Marshal.FreeCoTaskMem(fsEntry);
-        }
-
         ulong size = (ulong)(QuadVertices.Length * sizeof(float));
         var bufferDescriptor = new BufferDescriptor
         {
@@ -374,10 +208,8 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             Resources = _resources,
             Assets = _assets,
             Pass = pass,
-            QuadPipeline = _quadPipeline,
             QuadVertexBuffer = _quadVertexBuffer,
             QuadVertexCount = _quadVertexCount,
-            SpriteLayout = _spriteLayout,
             DefaultTextureView = _defaultTextureView,
             DefaultSampler = _sampler,
             RepeatSampler = _repeatSampler,
@@ -679,9 +511,6 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         if (_defaultTextureView is not null) WGPU.wgpuTextureViewRelease(_defaultTextureView);
         if (_defaultTexture is not null) WGPU.wgpuTextureRelease(_defaultTexture);
         if (_quadVertexBuffer is not null) WGPU.wgpuBufferRelease(_quadVertexBuffer);
-        if (_quadPipeline is not null) WGPU.wgpuRenderPipelineRelease(_quadPipeline);
-        if (_pipelineLayout is not null) WGPU.wgpuPipelineLayoutRelease(_pipelineLayout);
-        if (_spriteLayout is not null) WGPU.wgpuBindGroupLayoutRelease(_spriteLayout);
 
         // 取りこぼされたコンポーネント側リソース（OnDestroy を通らなかった分）の掃除
         _resources.Dispose();

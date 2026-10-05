@@ -2,12 +2,13 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using EmptyEngine.Editor;
+using EmptyEngine.Editor.Assets;
 using EmptyEngine.Editor.Authoring;
 
 namespace EmptyEngine.SceneSource.Editor;
 
 /// <summary><c>.scene</c> のシーンインポーター</summary>
-public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImporter
+public sealed class SceneAssetImporter(ISchemaSource schemas, AssetCatalog sources) : INestedPrefabImporter
 {
     private sealed record NestedSource(string Guid, string SourcePath);
 
@@ -23,8 +24,7 @@ public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImp
         var dependencies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            root = ReadBaked(json, request.AssetsRootPath, request.SourcePath,
-                activeGuids: new HashSet<string>(StringComparer.OrdinalIgnoreCase), dependencies);
+            root = ReadBaked(json, new HashSet<string>(StringComparer.OrdinalIgnoreCase), dependencies);
         }
         catch (Exception ex) when (ex is FormatException or InvalidDataException)
         {
@@ -42,7 +42,7 @@ public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImp
     {
         await SeedNestedTableFromSourceAsync(filePath, cancellationToken);
 
-        string json = SceneJsonCodec.ToJson(scene, child => TryFoldNested(child, filePath));
+        string json = SceneJsonCodec.ToJson(scene, TryFoldNested);
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
     }
 
@@ -85,8 +85,8 @@ public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImp
     public Task<HierarchyNode> InstantiateNestedAsync(string sourceKey, string sourcePath, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        HierarchyNode baked = ReadSourceBaked(sourcePath, preferredRoot: null,
-            activeGuids: new HashSet<string>(StringComparer.OrdinalIgnoreCase) { sourceKey });
+        HierarchyNode baked = ReadSourceBaked(
+            sourcePath, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { sourceKey });
 
         string leafId = Guid.NewGuid().ToString("N");
         HierarchyNode remapped = NestedPrefabCodec.Remap(baked, leafId);
@@ -98,13 +98,12 @@ public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImp
     public bool IsNestedInstanceRoot(string objectId, string? parentObjectId) =>
         NestedPrefabCodec.IsInstanceRoot(objectId, parentObjectId);
 
-    private HierarchyNode ReadBaked(string json, string? preferredRoot, string referencingPath, HashSet<string> activeGuids, ISet<string>? dependencies = null)
+    private HierarchyNode ReadBaked(string json, HashSet<string> activeGuids, ISet<string>? dependencies = null)
     {
-        return SceneJsonCodec.FromJson(
-            json, schemas, leaf => BakeLeaf(leaf, preferredRoot, referencingPath, activeGuids, dependencies));
+        return SceneJsonCodec.FromJson(json, schemas, leaf => BakeLeaf(leaf, activeGuids, dependencies));
     }
 
-    private HierarchyNode BakeLeaf(NestedPrefabCodec.PrefabLeaf leaf, string? preferredRoot, string referencingPath, HashSet<string> activeGuids, ISet<string>? dependencies)
+    private HierarchyNode BakeLeaf(NestedPrefabCodec.PrefabLeaf leaf, HashSet<string> activeGuids, ISet<string>? dependencies)
     {
         if (string.IsNullOrWhiteSpace(leaf.Id) || string.IsNullOrWhiteSpace(leaf.SourceGuid))
             throw new FormatException("Nested prefab leaf must have both 'Id' and 'Prefab'.");
@@ -113,12 +112,12 @@ public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImp
 
         try
         {
-            if (!MetaGuidLocator.TryResolve(preferredRoot, referencingPath, leaf.SourceGuid, out string? sourcePath) || sourcePath is null)
+            if (sources.FindSourcePath(leaf.SourceGuid) is not { } sourcePath)
                 throw new FormatException($"Cannot resolve nested prefab '{leaf.SourceGuid}'.");
 
-            dependencies?.Add(MetaGuidLocator.TryReadGuidOf(sourcePath) ?? leaf.SourceGuid);
+            dependencies?.Add(leaf.SourceGuid);
 
-            HierarchyNode baked = ReadSourceBaked(sourcePath, preferredRoot, activeGuids, dependencies);
+            HierarchyNode baked = ReadSourceBaked(sourcePath, activeGuids, dependencies);
             HierarchyNode remapped = NestedPrefabCodec.Remap(baked, leaf.Id);
             HierarchyNode merged = PrefabVariantCodec.Merge(
                 remapped, schemas, leaf.Overrides, leaf.AddedComponents, leaf.AddedChildren);
@@ -132,7 +131,7 @@ public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImp
         }
     }
 
-    private JsonObject? TryFoldNested(HierarchyNode child, string hostFilePath)
+    private JsonObject? TryFoldNested(HierarchyNode child)
     {
         if (NestedPrefabCodec.LeafIdOf(child.ObjectId) is not { } leafId)
             return null;
@@ -142,7 +141,8 @@ public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImp
         string? sourcePath = source.SourcePath;
         if (!File.Exists(sourcePath))
         {
-            if (!MetaGuidLocator.TryResolve(preferredRoot: null, hostFilePath, source.Guid, out sourcePath) || sourcePath is null)
+            sourcePath = sources.FindSourcePath(source.Guid);
+            if (sourcePath is null)
             {
                 return NestedPrefabCodec.WriteLeaf(new NestedPrefabCodec.PrefabLeaf(
                     leafId,
@@ -154,8 +154,8 @@ public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImp
             _nestedByLeafId[leafId] = source with { SourcePath = sourcePath };
         }
 
-        HierarchyNode baked = ReadSourceBaked(sourcePath, preferredRoot: null,
-            activeGuids: new HashSet<string>(StringComparer.OrdinalIgnoreCase) { source.Guid });
+        HierarchyNode baked = ReadSourceBaked(
+            sourcePath, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { source.Guid });
         HierarchyNode remapped = NestedPrefabCodec.Remap(baked, leafId);
         IReadOnlyList<PrefabVariantCodec.FieldOverride> overrides = PrefabVariantCodec.Diff(remapped, child);
         IReadOnlyList<PrefabVariantCodec.ComponentAddition> addedComponents =
@@ -170,13 +170,12 @@ public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImp
 
     private HierarchyNode ReadSourceBaked(
         string sourcePath,
-        string? preferredRoot,
         HashSet<string> activeGuids,
         ISet<string>? dependencies = null)
     {
         string json = File.ReadAllText(sourcePath);
         if (!string.Equals(Path.GetExtension(sourcePath), ".variant", StringComparison.OrdinalIgnoreCase))
-            return ReadBaked(json, preferredRoot, sourcePath, activeGuids, dependencies);
+            return ReadBaked(json, activeGuids, dependencies);
 
         PrefabVariantCodec.VariantData variant = PrefabVariantCodec.FromJson(json, schemas);
         if (string.IsNullOrWhiteSpace(variant.Original))
@@ -186,12 +185,11 @@ public sealed class SceneAssetImporter(ISchemaSource schemas) : INestedPrefabImp
 
         try
         {
-            if (!MetaGuidLocator.TryResolve(preferredRoot, sourcePath, variant.Original, out string? originalPath) ||
-                originalPath is null)
+            if (sources.FindSourcePath(variant.Original) is not { } originalPath)
                 throw new FormatException($"Cannot resolve original prefab '{variant.Original}' for variant '{sourcePath}'.");
 
-            dependencies?.Add(MetaGuidLocator.TryReadGuidOf(originalPath) ?? variant.Original);
-            HierarchyNode original = ReadSourceBaked(originalPath, preferredRoot, activeGuids, dependencies);
+            dependencies?.Add(variant.Original);
+            HierarchyNode original = ReadSourceBaked(originalPath, activeGuids, dependencies);
             return PrefabVariantCodec.Merge(
                 original, schemas, variant.Overrides, variant.AddedComponents, variant.AddedChildren);
         }

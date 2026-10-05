@@ -61,7 +61,7 @@ public sealed class FbxImportTests
             var importer = new FbxImporter(CatalogStub.Schemas);
             Assert.Contains(".fbx", importer.SupportedExtensions);
 
-            var request = new AssetImportRequest(fbxPath, "cube.fbx", root);
+            var request = new AssetImportRequest(fbxPath, "cube.fbx");
             AssetImportResult result = await importer.ImportAsync(request);
 
             Assert.True(result.Success, result.Message);

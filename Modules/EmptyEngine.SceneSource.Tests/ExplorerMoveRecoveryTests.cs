@@ -260,12 +260,7 @@ public sealed class ExplorerMoveRecoveryTests : IDisposable
     {
         string artifacts = Path.Combine(_assetsRoot, ".artifacts");
         var catalog = new AssetCatalog();
-        var service = new AssetImportService(
-            catalog,
-            _assetsRoot,
-            new IAssetImporter[] { new SceneAssetImporter(CatalogStub.Schemas) },
-            stampRootPath: Path.Combine(artifacts, "import-stamps"),
-            fileIdentity: fileIdentity);
+        var service = new AssetImportService(catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { new SceneAssetImporter(CatalogStub.Schemas, catalog) }, Path.Combine(artifacts, "import-stamps"), fileIdentity: fileIdentity);
         service.SetArtifacts(TestArtifacts.At(Path.Combine(artifacts, "store")));
         return (catalog, service);
     }

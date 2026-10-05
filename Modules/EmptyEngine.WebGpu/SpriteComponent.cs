@@ -130,7 +130,7 @@ public sealed unsafe partial class SpriteComponent : ISpriteRenderer, IShaderPar
             ? ShaderRenderQueue.Transparent
             : ShaderBlend.ResolveRenderQueue(_resolvedShader, ShaderRenderQueue.Transparent);
 
-        if (_resolvedShader is null && Color == default) Color = GraphicsColor.White;
+        if (Shader.IsEmpty && Color == default) Color = GraphicsColor.White;
     }
 
     /// <summary>解決済み <see cref="SpriteAsset"/> からの矩形・スケール・アニメの取り込み</summary>
@@ -176,7 +176,8 @@ public sealed unsafe partial class SpriteComponent : ISpriteRenderer, IShaderPar
 
     public void Render(in RenderContext context)
     {
-        EnsureResources(in context);
+        if (_resolvedShader is not { } shader) return;
+        EnsureResources(in context, shader);
 
         Matrix4x4 transform = BuildLocalMatrix() * SpriteRenderSupport.ReadTransform(_owner) * context.Projection;
 
@@ -205,8 +206,7 @@ public sealed unsafe partial class SpriteComponent : ISpriteRenderer, IShaderPar
                 WGPU.wgpuQueueWriteBuffer(context.Queue, _paramBuffer, 0, p, (nuint)(Params.Length * sizeof(float)));
         }
 
-        RenderPipeline* pipeline = _pipeline is not null ? _pipeline : context.QuadPipeline;
-        SpriteRenderSupport.DrawQuad(in context, pipeline, _bindGroup, _globals);
+        SpriteRenderSupport.DrawQuad(in context, _pipeline, _bindGroup, _globals);
     }
 
     /// <summary>単位 quad（±0.5）をこのスプライトの大きさとピボットへ合わせるローカル変換</summary>
@@ -250,7 +250,7 @@ public sealed unsafe partial class SpriteComponent : ISpriteRenderer, IShaderPar
         return true;
     }
 
-    private void EnsureResources(in RenderContext context)
+    private void EnsureResources(in RenderContext context, ShaderAsset shader)
     {
         TextureAsset?[] resolvedSlots = _resolvedSlotTextures ?? [];
         if (_resourcesBuilt
@@ -275,50 +275,40 @@ public sealed unsafe partial class SpriteComponent : ISpriteRenderer, IShaderPar
             ? AcquireTexture(in context, _resolvedTexture)
             : context.DefaultTextureView;
 
-        if (_resolvedShader is not null)
+        BuildCustomPipeline(in context, shader);
+        ShaderTextureSlot[] extraSlots = ResolveTextureSlots(shader);
+        ShaderTextureSlot[] allSlots = [BaseTextureSlot, .. extraSlots];
+        Span<int> slotBindings = new int[allSlots.Length];
+        Span<nint> slotViews = new nint[allSlots.Length];
+        slotBindings[0] = BaseTextureSlot.Binding;
+        slotViews[0] = (nint)textureView;
+
+        _slotTextures = new Texture*[extraSlots.Length];
+        _slotTextureViews = new TextureView*[extraSlots.Length];
+        for (int i = 0; i < extraSlots.Length; i++)
         {
-            BuildCustomPipeline(in context, _resolvedShader);
-            ShaderTextureSlot[] extraSlots = ResolveTextureSlots(_resolvedShader);
-            ShaderTextureSlot[] allSlots = [BaseTextureSlot, .. extraSlots];
-            Span<int> slotBindings = new int[allSlots.Length];
-            Span<nint> slotViews = new nint[allSlots.Length];
-            slotBindings[0] = BaseTextureSlot.Binding;
-            slotViews[0] = (nint)textureView;
-
-            _slotTextures = new Texture*[extraSlots.Length];
-            _slotTextureViews = new TextureView*[extraSlots.Length];
-            for (int i = 0; i < extraSlots.Length; i++)
+            TextureView* view = context.DefaultTextureView;
+            if (i < resolvedSlots.Length && resolvedSlots[i] is { } texture)
             {
-                TextureView* view = context.DefaultTextureView;
-                if (i < resolvedSlots.Length && resolvedSlots[i] is { } texture)
-                {
-                    _slotTextures[i] = SpriteRenderSupport.CreateTexture(in context, texture);
-                    _slotTextureViews[i] = WGPU.wgpuTextureCreateView(_slotTextures[i], null);
-                    view = _slotTextureViews[i];
-                }
-
-                slotBindings[i + 1] = extraSlots[i].Binding;
-                slotViews[i + 1] = (nint)view;
+                _slotTextures[i] = SpriteRenderSupport.CreateTexture(in context, texture);
+                _slotTextureViews[i] = WGPU.wgpuTextureCreateView(_slotTextures[i], null);
+                view = _slotTextureViews[i];
             }
-            context.Resources.Track(this, () =>
-            {
-                foreach (TextureView* view in _slotTextureViews) if (view is not null) WGPU.wgpuTextureViewRelease(view);
-                foreach (Texture* texture in _slotTextures) if (texture is not null) WGPU.wgpuTextureRelease(texture);
-                _slotTextureViews = [];
-                _slotTextures = [];
-            });
 
-            _bindGroup = MeshRenderSupport.CreateShaderParamBindGroup(
-                in context, _bindGroupLayout, _uniformBuffer, UniformSize, context.DefaultSampler,
-                _paramBuffer, (ulong)ParamBufferSize, slotBindings, slotViews);
+            slotBindings[i + 1] = extraSlots[i].Binding;
+            slotViews[i + 1] = (nint)view;
         }
-        else
+        context.Resources.Track(this, () =>
         {
-            _shaderDepth = ShaderDepthState.Transparent;
-            _renderQueue = ShaderRenderQueue.Transparent;
-            _bindGroup = SpriteRenderSupport.CreateTexturedBindGroup(
-                in context, context.SpriteLayout, _uniformBuffer, UniformSize, textureView, context.DefaultSampler);
-        }
+            foreach (TextureView* view in _slotTextureViews) if (view is not null) WGPU.wgpuTextureViewRelease(view);
+            foreach (Texture* texture in _slotTextures) if (texture is not null) WGPU.wgpuTextureRelease(texture);
+            _slotTextureViews = [];
+            _slotTextures = [];
+        });
+
+        _bindGroup = MeshRenderSupport.CreateShaderParamBindGroup(
+            in context, _bindGroupLayout, _uniformBuffer, UniformSize, context.DefaultSampler,
+            _paramBuffer, (ulong)ParamBufferSize, slotBindings, slotViews);
         context.Resources.Track(this, () => { if (_bindGroup is not null) { WGPU.wgpuBindGroupRelease(_bindGroup); _bindGroup = null; } });
 
         _realizedTexture = _resolvedTexture;
@@ -442,6 +432,7 @@ public sealed partial class SpriteComponent
     public async ValueTask OnResolveAssetsAsync(IAssetResolver resolver)
     {
         await ResolveAssetFieldsAsync(resolver);
+        _resolvedShader ??= await resolver.ResolveAsync(new AssetReference<ShaderAsset>(BuiltinShaders.Sprite));
         Textures ??= [];
         if (_resolvedShader is not null)
             Textures = ShaderParamsHost.ReconcileTextures(ResolveTextureSlots(_resolvedShader), Textures);

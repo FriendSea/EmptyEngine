@@ -174,7 +174,7 @@ public sealed class AudioLoopTests : IDisposable
         }
 
         var result = await new WavAudioImporter(CatalogStub.Schemas)
-            .ImportAsync(new AssetImportRequest(path, "music.wav", _root));
+            .ImportAsync(new AssetImportRequest(path, "music.wav"));
         Assert.True(result.Success, result.Message);
         return await AuthoringTestHelpers.ResolveAsync<AudioClipAsset>(_root, AuthoringTestHelpers.AssetOf(result));
     }

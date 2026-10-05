@@ -34,6 +34,7 @@ public sealed class EditorViewModel : ViewModelBase, IAsyncDisposable
     private readonly Dictionary<string, string> _loadedSceneKeys = new(StringComparer.Ordinal);
     private readonly AssetCatalog _assets;
     private readonly AssetImportService _imports;
+    private readonly ProjectAssetLayout _layout;
     private readonly IHierarchyBlobSerializer _cloneSerializer;
     private readonly TypeCatalog _typeCatalog;
     private readonly EditorStateStore _stateStore;
@@ -67,6 +68,7 @@ public sealed class EditorViewModel : ViewModelBase, IAsyncDisposable
 
     /// <param name="assets">取り込み済みアセットのカタログ</param>
     /// <param name="imports">ソースアセットの取り込み</param>
+    /// <param name="layout">アセットルートとパッケージの配置（新しいアセットを作る場所と、書き戻せるかどうか）</param>
     /// <param name="serializer">undo と権威ツリー送信で使う blob 変換</param>
     /// <param name="state">セッションを跨いで保つ UI 状態（ペイン幅・展開）</param>
     /// <param name="history">undo/redo の段とカーソル（段を積むのも戻すのもこの VM から）</param>
@@ -74,6 +76,7 @@ public sealed class EditorViewModel : ViewModelBase, IAsyncDisposable
     public EditorViewModel(
         AssetCatalog assets,
         AssetImportService imports,
+        ProjectAssetLayout layout,
         IHierarchyBlobSerializer serializer,
         EditorStateStore state,
         EditHistoryViewModel history,
@@ -82,6 +85,7 @@ public sealed class EditorViewModel : ViewModelBase, IAsyncDisposable
     {
         _assets = assets;
         _imports = imports;
+        _layout = layout;
         _cloneSerializer = serializer;
         _stateStore = state;
         _typeCatalog = catalog;
@@ -92,7 +96,7 @@ public sealed class EditorViewModel : ViewModelBase, IAsyncDisposable
         _history = history;
         _history.Restoring += RestoreWorld;
 
-        Asset = new AssetInspectorViewModel(assets, imports, logger);
+        Asset = new AssetInspectorViewModel(assets, imports, layout, logger);
         Asset.CatalogChanged += BuildScenes.RefreshDisplayNames;
         Asset.SceneCreated += LoadSceneByKey;
         Asset.PropertyChanged += (_, e) =>
@@ -117,7 +121,7 @@ public sealed class EditorViewModel : ViewModelBase, IAsyncDisposable
     /// <summary>Build Settings リストが取り込み結果を引く受け口</summary>
     private sealed class BuildSceneSource(EditorViewModel owner) : IBuildSceneSource
     {
-        public string? AssetsRootPath => owner._imports.AssetsRootPath;
+        public string? AssetsRootPath => owner._layout.AssetsRootPath;
 
         public bool IsSceneAsset(string key) => owner._assets.IsSceneAsset(key);
 
@@ -619,7 +623,7 @@ public sealed class EditorViewModel : ViewModelBase, IAsyncDisposable
             return;
         }
 
-        string targetDir = _imports.ResolveFolder(relativeFolder);
+        string targetDir = _layout.ResolveFolder(relativeFolder);
         Directory.CreateDirectory(targetDir);
 
         string baseName = SanitizeSceneName(requestedName);
@@ -739,8 +743,9 @@ public sealed class EditorViewModel : ViewModelBase, IAsyncDisposable
 
         string targetDir = OwningSceneKey(_selectedNode) is { } hostKey
             && _assets.TryGetSourcePath(hostKey, out string? hostPath) && hostPath is not null
-            ? Path.GetDirectoryName(hostPath) ?? _imports.AssetsRootPath
-            : _imports.AssetsRootPath;
+            && !_layout.IsReadOnlySource(hostPath)
+            ? Path.GetDirectoryName(hostPath) ?? _layout.AssetsRootPath
+            : _layout.AssetsRootPath;
         string baseName = SanitizeSceneName(requestedName ?? subtree.Name);
         string path = UniqueScenePath(targetDir, baseName);
 
@@ -794,7 +799,7 @@ public sealed class EditorViewModel : ViewModelBase, IAsyncDisposable
 
 
     /// <summary>保存先フォルダの候補（アセットルート基準の相対パス）</summary>
-    public IReadOnlyList<string> GetAssetFolders() => _imports.EnumerateFolders();
+    public IReadOnlyList<string> GetAssetFolders() => _layout.EnumerateFolders();
 
     /// <summary>拡張子に結び付いたインポータの、求める役ができるものとしての取り出し</summary>
     /// <remarks>取り込みがまだ（サービスが居ない）ときも「その役は無い」と答える</remarks>

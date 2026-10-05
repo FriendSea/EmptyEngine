@@ -41,18 +41,14 @@ public sealed class ExtractPrefabTests : IDisposable
     private AssetImportService CreateService()
     {
         string artifacts = Path.Combine(_assetsRoot, ".artifacts");
-        var service = new AssetImportService(
-            _catalog,
-            _assetsRoot,
-            new IAssetImporter[] { new SceneAssetImporter(CatalogStub.Schemas), new PrefabVariantImporter(CatalogStub.Schemas) },
-            stampRootPath: Path.Combine(artifacts, "import-stamps"));
+        var service = new AssetImportService(_catalog, new ProjectAssetLayout(_assetsRoot).Sources, new IAssetImporter[] { new SceneAssetImporter(CatalogStub.Schemas, _catalog), new PrefabVariantImporter(CatalogStub.Schemas, _catalog) }, Path.Combine(artifacts, "import-stamps"));
         service.SetArtifacts(TestArtifacts.At(Path.Combine(artifacts, "store")));
         return service;
     }
 
     private async Task<EditorViewModel> SetupInitializedViewModelAsync(AssetImportService service)
     {
-        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service);
+        var vm = EditorFixture.NewEditor(assets: _catalog, imports: service, layout: new ProjectAssetLayout(_assetsRoot));
         await vm.InitializeAsync();
         vm.SceneSaveRequested += (root, key) =>
         {
@@ -129,8 +125,8 @@ public sealed class ExtractPrefabTests : IDisposable
         Assert.DoesNotContain("\"Name\": \"Body\"", saved);
         Assert.Contains(instanceBodyId, saved);
 
-        var reimported = AuthoringTestHelpers.SceneOf(await new SceneAssetImporter(CatalogStub.Schemas).ImportAsync(
-            new AssetImportRequest(hostPath, "Main.scene", _assetsRoot)));
+        var reimported = AuthoringTestHelpers.SceneOf(await new SceneAssetImporter(CatalogStub.Schemas, _catalog).ImportAsync(
+            new AssetImportRequest(hostPath, "Main.scene")));
         HierarchyNode instance = reimported.Children[0];
         Assert.Equal(instanceRootId, instance.ObjectId);
         Assert.Equal(60, AuthoringTestHelpers.GetInt(instance.Components.Single(), nameof(TestHealth.Current)));

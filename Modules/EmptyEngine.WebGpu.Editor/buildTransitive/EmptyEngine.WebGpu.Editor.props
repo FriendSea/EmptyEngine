@@ -1,0 +1,15 @@
+<Project>
+
+  <!-- 同梱する既定シェーダのソースアセットを、エディタへ知らせる。 -->
+  <ItemGroup>
+    <EmptyEngineAssetRoot Include="$(MSBuildThisFileDirectory)..\assets" Name="EmptyEngine.WebGpu" />
+  </ItemGroup>
+
+  <!-- コンポーネントがキーで引くので、シーンから辿れなくても配布する（Sprite / Mesh / Line）。 -->
+  <ItemGroup>
+    <DistributionRoot Include="d73a34965e56402c81ae33d70b969657" />
+    <DistributionRoot Include="84e640fe39354467b69a0ac4fa6d9e4b" />
+    <DistributionRoot Include="7709483a8f3f41f99e7760f4c56f7777" />
+  </ItemGroup>
+
+</Project>

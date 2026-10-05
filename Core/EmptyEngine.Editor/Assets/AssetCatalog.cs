@@ -12,6 +12,17 @@ public sealed class AssetCatalog
 
     private Snapshot _snapshot = new(new Dictionary<string, ImportedSource>(StringComparer.Ordinal));
 
+    private IReadOnlyDictionary<string, string> _sourceByGuid =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>guid からソースファイルの実パス（まだ取り込んでいないソースも引ける）</summary>
+    /// <returns>その guid のソースが無ければ <c>null</c></returns>
+    public string? FindSourcePath(string guid) => Volatile.Read(ref _sourceByGuid).GetValueOrDefault(guid);
+
+    /// <summary>走査で見つけたソースの、guid からの引き当ての差し替え</summary>
+    internal void SetSources(IReadOnlyDictionary<string, string> sourceByGuid) =>
+        Volatile.Write(ref _sourceByGuid, sourceByGuid);
+
     /// <summary>GUID 参照と表示パスの組の表示パス順の列挙</summary>
     public IEnumerable<CatalogEntry> EnumerateAssets()
     {

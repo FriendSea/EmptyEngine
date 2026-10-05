@@ -17,7 +17,7 @@ public sealed class AssetImportLoggingTests : IDisposable
         string sourcePath = Path.Combine(_assetsRoot, "Broken.throwing");
         File.WriteAllText(sourcePath, "broken");
         var logs = new RecordingLogger<AssetImportService>();
-        var service = new AssetImportService(new AssetCatalog(), _assetsRoot, [new ThrowingImporter()], logs);
+        var service = new AssetImportService(new AssetCatalog(), new ProjectAssetLayout(_assetsRoot).Sources, [new ThrowingImporter()], Path.Combine(_assetsRoot, ".import-stamps"), logs);
 
         AssetImportResult result = Assert.Single(await service.ImportAllAsync());
 
@@ -36,7 +36,7 @@ public sealed class AssetImportLoggingTests : IDisposable
         string sourcePath = Path.Combine(_assetsRoot, "Broken.failing");
         File.WriteAllText(sourcePath, "broken");
         var logs = new RecordingLogger<AssetImportService>();
-        var service = new AssetImportService(new AssetCatalog(), _assetsRoot, [new FailingImporter()], logs);
+        var service = new AssetImportService(new AssetCatalog(), new ProjectAssetLayout(_assetsRoot).Sources, [new FailingImporter()], Path.Combine(_assetsRoot, ".import-stamps"), logs);
 
         AssetImportResult result = Assert.Single(await service.ImportAllAsync());
 

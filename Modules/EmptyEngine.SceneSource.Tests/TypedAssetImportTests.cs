@@ -30,7 +30,7 @@ public sealed class TypedAssetImportTests
                 """);
 
             AssetImportResult result = await new TypedAssetImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(path, "Greeting.asset", dir));
+                .ImportAsync(new AssetImportRequest(path, "Greeting.asset"));
 
             Assert.True(result.Success, result.Message);
             ImportedSource element = Assert.Single(result.Assets);
@@ -59,7 +59,7 @@ public sealed class TypedAssetImportTests
                 """);
 
             AssetImportResult result = await new TypedAssetImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(path, "Health.asset", dir));
+                .ImportAsync(new AssetImportRequest(path, "Health.asset"));
 
             Assert.True(result.Success, result.Message);
             AuthoringObject health = AuthoringTestHelpers.AssetOf(result);
@@ -84,7 +84,7 @@ public sealed class TypedAssetImportTests
             await File.WriteAllTextAsync(path, """{ "TypeName": "EmptyEngine.Modules.Testing.TestHealth" }""");
 
             AssetImportResult result = await new TypedAssetImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(path, "Bare.asset", dir));
+                .ImportAsync(new AssetImportRequest(path, "Bare.asset"));
 
             Assert.True(result.Success, result.Message);
             AuthoringObject health = AuthoringTestHelpers.AssetOf(result);
@@ -111,7 +111,7 @@ public sealed class TypedAssetImportTests
                 """);
 
             AssetImportResult result = await new TypedAssetImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(path, "Partial.asset", dir));
+                .ImportAsync(new AssetImportRequest(path, "Partial.asset"));
 
             Assert.True(result.Success, result.Message);
             AuthoringObject health = AuthoringTestHelpers.AssetOf(result);
@@ -134,7 +134,7 @@ public sealed class TypedAssetImportTests
             await File.WriteAllTextAsync(path, """{ "TypeName": "Nope.DoesNotExist", "Data": { "Keep": 1 } }""");
 
             AssetImportResult result = await new TypedAssetImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(path, "Bad.asset", dir));
+                .ImportAsync(new AssetImportRequest(path, "Bad.asset"));
 
             Assert.False(result.Success);
             Assert.Contains("Nope.DoesNotExist", result.Message);
@@ -158,7 +158,7 @@ public sealed class TypedAssetImportTests
             await File.WriteAllTextAsync(path, """{ "TypeName": "EmptyEngine.Modules.Testing.TestSpriteHolder" }""");
 
             AssetImportResult result = await new TypedAssetImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(path, "Holder.asset", dir));
+                .ImportAsync(new AssetImportRequest(path, "Holder.asset"));
             AuthoringObject authoring = AuthoringTestHelpers.AssetOf(result);
 
             var idleNode = Assert.IsType<FieldValue>(Assert.IsType<FieldValue>(authoring.Data).Get("idle"));
@@ -186,7 +186,7 @@ public sealed class TypedAssetImportTests
             await File.WriteAllTextAsync(path, """{ "Data": { "Text": "x" } }""");
 
             AssetImportResult result = await new TypedAssetImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(path, "NoType.asset", dir));
+                .ImportAsync(new AssetImportRequest(path, "NoType.asset"));
 
             Assert.False(result.Success);
         }
@@ -208,7 +208,7 @@ public sealed class TypedAssetImportTests
                 """);
 
             AssetImportResult result = await new TypedAssetImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(path, "Greeting.asset", dir));
+                .ImportAsync(new AssetImportRequest(path, "Greeting.asset"));
             Assert.True(result.Success, result.Message);
 
             var reference = new AssetKey("greeting-key");
@@ -236,7 +236,7 @@ public sealed class TypedAssetImportTests
                 """);
 
             AssetImportResult result = await new TypedAssetImporter(CatalogStub.Schemas)
-                .ImportAsync(new AssetImportRequest(path, "Greeting.asset", dir));
+                .ImportAsync(new AssetImportRequest(path, "Greeting.asset"));
             Assert.True(result.Success, result.Message);
 
             var serializer = TestArtifacts.At(dir);
@@ -267,7 +267,7 @@ public sealed class TypedAssetImportTests
 
             var importer = new TypedAssetImporter(CatalogStub.Schemas);
             AuthoringObject imported = AuthoringTestHelpers.AssetOf(
-                await importer.ImportAsync(new AssetImportRequest(path, "Health.asset", dir)));
+                await importer.ImportAsync(new AssetImportRequest(path, "Health.asset")));
 
             AuthoringTestHelpers.SetNumber(imported, "Current", 30);
             AuthoringTestHelpers.SetNumber(imported, "Max", 120);
@@ -278,7 +278,7 @@ public sealed class TypedAssetImportTests
             Assert.Contains("EmptyEngine.Modules.Testing.TestHealth", written);
 
             AuthoringObject reimported = AuthoringTestHelpers.AssetOf(
-                await importer.ImportAsync(new AssetImportRequest(path, "Health.asset", dir)));
+                await importer.ImportAsync(new AssetImportRequest(path, "Health.asset")));
             Assert.Equal(120, AuthoringTestHelpers.GetInt(reimported, "Max"));
             Assert.Equal(30, AuthoringTestHelpers.GetInt(reimported, "Current"));
         }
@@ -303,7 +303,7 @@ public sealed class TypedAssetImportTests
 
             var importer = new TypedAssetImporter(CatalogStub.Schemas);
             AuthoringObject imported = AuthoringTestHelpers.AssetOf(
-                await importer.ImportAsync(new AssetImportRequest(path, "Holder.asset", dir)));
+                await importer.ImportAsync(new AssetImportRequest(path, "Holder.asset")));
 
             Assert.Equal(string.Empty, AuthoringTestHelpers.GetAssetKey(imported, "idle"));
             Assert.Equal(string.Empty, AuthoringTestHelpers.GetAssetKey(imported, "run"));
@@ -318,7 +318,7 @@ public sealed class TypedAssetImportTests
             Assert.Contains("run-key", written);
 
             AuthoringObject reimported = AuthoringTestHelpers.AssetOf(
-                await importer.ImportAsync(new AssetImportRequest(path, "Holder.asset", dir)));
+                await importer.ImportAsync(new AssetImportRequest(path, "Holder.asset")));
             Assert.Equal("idle-key", AuthoringTestHelpers.GetAssetKey(reimported, "idle"));
             Assert.Equal("run-key", AuthoringTestHelpers.GetAssetKey(reimported, "run"));
         }
@@ -347,14 +347,14 @@ public sealed class TypedAssetImportTests
 
             var importer = new TypedAssetImporter(CatalogStub.Schemas);
             AuthoringObject imported = AuthoringTestHelpers.AssetOf(
-                await importer.ImportAsync(new AssetImportRequest(path, "Health.asset", dir)));
+                await importer.ImportAsync(new AssetImportRequest(path, "Health.asset")));
             await importer.SaveAsync(imported, path);
 
             using JsonDocument written = JsonDocument.Parse(await File.ReadAllTextAsync(path));
             Assert.Equal("../../.artifacts/asset.schema.json", written.RootElement.GetProperty("$schema").GetString());
 
             AuthoringObject reimported = AuthoringTestHelpers.AssetOf(
-                await importer.ImportAsync(new AssetImportRequest(path, "Health.asset", dir)));
+                await importer.ImportAsync(new AssetImportRequest(path, "Health.asset")));
             Assert.Equal(100, AuthoringTestHelpers.GetInt(reimported, "Max"));
             Assert.Equal(75, AuthoringTestHelpers.GetInt(reimported, "Current"));
         }

@@ -21,8 +21,47 @@
     <Error Condition="'$(BuildWorkingPath)' != '' and !$([System.IO.Path]::IsPathRooted('$(BuildWorkingPath)'))"
            Text="BuildWorkingPath must be absolute (prefix it with %24(MSBuildThisFileDirectory))." />
 
+    <!-- 参照先が同梱するソースアセットのルートを集める。パッケージは props で、プロジェクト参照はターゲットで名乗る。 -->
+    <MSBuild Projects="@(ProjectReference)"
+             Targets="EmptyEngineGetAssetRoots"
+             SkipNonexistentTargets="true"
+             Condition="'@(ProjectReference)' != ''">
+      <Output TaskParameter="TargetOutputs" ItemName="_EmptyEngineAssetRootAll" />
+    </MSBuild>
+    <ItemGroup>
+      <_EmptyEngineAssetRootAll Include="@(EmptyEngineAssetRoot->'%(FullPath)')" />
+    </ItemGroup>
+    <RemoveDuplicates Inputs="@(_EmptyEngineAssetRootAll)">
+      <Output TaskParameter="Filtered" ItemName="_EmptyEngineAssetRoot" />
+    </RemoveDuplicates>
+
+    <!-- シーンから辿れなくても配布するアセットを、同じ 2 つの経路で集める。 -->
+    <MSBuild Projects="@(ProjectReference)"
+             Targets="EmptyEngineGetDistributionRoots"
+             SkipNonexistentTargets="true"
+             Condition="'@(ProjectReference)' != ''">
+      <Output TaskParameter="TargetOutputs" ItemName="_EmptyEngineDistributionRootAll" />
+    </MSBuild>
+    <ItemGroup>
+      <_EmptyEngineDistributionRootAll Include="@(DistributionRoot)" />
+    </ItemGroup>
+    <RemoveDuplicates Inputs="@(_EmptyEngineDistributionRootAll)">
+      <Output TaskParameter="Filtered" ItemName="_EmptyEngineDistributionRoot" />
+    </RemoveDuplicates>
+
+    <Error Condition="'@(_EmptyEngineAssetRoot)' != '' and '%(_EmptyEngineAssetRoot.Name)' == ''"
+           Text="EmptyEngineAssetRoot '%(_EmptyEngineAssetRoot.Identity)' needs a Name (e.g. &lt;EmptyEngineAssetRoot Include=&quot;%24(MSBuildThisFileDirectory)../assets&quot; Name=&quot;MyPackage&quot; /&gt;). It is shown as Packages/&lt;Name&gt;/ in the editor." />
+
     <ItemGroup>
       <RuntimeHostConfigurationOption Include="EmptyEngine.AssetsRoot" Value="$(AssetsPath)" />
+
+      <!-- アセットを同梱するパッケージの名前と場所を出力する。 -->
+      <RuntimeHostConfigurationOption Include="EmptyEngine.AssetPackages"
+                                      Value="@(_EmptyEngineAssetRoot->'%(Name)', ';')"
+                                      Condition="'@(_EmptyEngineAssetRoot)' != ''" />
+      <RuntimeHostConfigurationOption Include="EmptyEngine.AssetPackage.%(_EmptyEngineAssetRoot.Name).Path"
+                                      Value="%(_EmptyEngineAssetRoot.Identity)"
+                                      Condition="'@(_EmptyEngineAssetRoot)' != ''" />
       <RuntimeHostConfigurationOption Include="EmptyEngine.BuildWorkingDirectory"
                                       Value="$(BuildWorkingPath)"
                                       Condition="'$(BuildWorkingPath)' != ''" />
@@ -37,6 +76,10 @@
       <RuntimeHostConfigurationOption Include="EmptyEngine.Build.%(DistributionBuild.Identity).DeployBeforeBuild"
                                       Value="%(DistributionBuild.DeployBeforeBuild)"
                                       Condition="'@(DistributionBuild)' != '' and '%(DistributionBuild.DeployBeforeBuild)' != ''" />
+
+      <RuntimeHostConfigurationOption Include="EmptyEngine.DistributionRoots"
+                                      Value="@(_EmptyEngineDistributionRoot, ';')"
+                                      Condition="'@(_EmptyEngineDistributionRoot)' != ''" />
 
       <RuntimeHostConfigurationOption Include="EmptyEngine.FrameAncestors"
                                       Value="@(EditorFrameAncestor, ';')"

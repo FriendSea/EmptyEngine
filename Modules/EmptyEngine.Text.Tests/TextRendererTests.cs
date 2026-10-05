@@ -45,8 +45,7 @@ public sealed class TextRendererTests
         try
         {
             var importer = new FontImporter(CatalogStub.Schemas);
-            AssetImportResult result = await importer.ImportAsync(new AssetImportRequest(
-                SampleFontPath(), "Font.ttf", Path.GetDirectoryName(SampleFontPath())!));
+            AssetImportResult result = await importer.ImportAsync(new AssetImportRequest(SampleFontPath(), "Font.ttf"));
             Assert.True(result.Success);
 
             var serializer = TestArtifacts.At(source);

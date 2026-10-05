@@ -214,7 +214,7 @@ public sealed class ShaderDirectiveTests : IDisposable
         await File.WriteAllTextAsync(source, wgsl);
 
         AssetImportResult result = await new ShaderImporter(CatalogStub.Schemas).ImportAsync(
-            new AssetImportRequest(source, Path.GetFileName(source), assets));
+            new AssetImportRequest(source, Path.GetFileName(source)));
 
         return await AuthoringTestHelpers.ResolveAsync<ShaderAsset>(
             assets, AuthoringTestHelpers.AssetOf(result));

@@ -99,8 +99,8 @@ public sealed class NestedPrefabTests : IDisposable
         (string guid, _) = WritePrefab();
         string hostPath = WriteHost(guid);
 
-        var importer = new SceneAssetImporter(CatalogStub.Schemas);
-        AssetImportResult result = await importer.ImportAsync(new AssetImportRequest(hostPath, "Level.scene", _assetsRoot));
+        var importer = new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
+        AssetImportResult result = await importer.ImportAsync(new AssetImportRequest(hostPath, "Level.scene"));
 
         Assert.True(result.Success, result.Message);
         var root = AuthoringTestHelpers.SceneOf(result);
@@ -139,8 +139,8 @@ public sealed class NestedPrefabTests : IDisposable
         await File.WriteAllTextAsync(variantPath + ".meta", $"{{\"guid\":\"{variantGuid}\"}}");
 
         string hostPath = WriteHost(variantGuid);
-        AssetImportResult result = await new SceneAssetImporter(CatalogStub.Schemas).ImportAsync(
-            new AssetImportRequest(hostPath, "Level.scene", _assetsRoot));
+        AssetImportResult result = await new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot)).ImportAsync(
+            new AssetImportRequest(hostPath, "Level.scene"));
 
         Assert.True(result.Success, result.Message);
         var root = AuthoringTestHelpers.SceneOf(result);
@@ -158,9 +158,9 @@ public sealed class NestedPrefabTests : IDisposable
         (string guid, _) = WritePrefab();
         string hostPath = WriteHost(guid);
 
-        var importer = new SceneAssetImporter(CatalogStub.Schemas);
+        var importer = new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
         var root = AuthoringTestHelpers.SceneOf(await importer.ImportAsync(
-            new AssetImportRequest(hostPath, "Level.scene", _assetsRoot)));
+            new AssetImportRequest(hostPath, "Level.scene")));
 
         HierarchyNode bodyB = root.Children[1].Children.Single(c => c.Name == "Body");
         AuthoringTestHelpers.SetNumber(bodyB.Components[0], nameof(TestHealth.Current), 42);
@@ -179,7 +179,7 @@ public sealed class NestedPrefabTests : IDisposable
         Assert.Contains("42", saved);
 
         var reimported = AuthoringTestHelpers.SceneOf(await importer.ImportAsync(
-            new AssetImportRequest(hostPath, "Level.scene", _assetsRoot)));
+            new AssetImportRequest(hostPath, "Level.scene")));
         Assert.Equal(25, AuthoringTestHelpers.GetInt(HealthOf(reimported.Children[0]), nameof(TestHealth.Current)));
         Assert.Equal(42, AuthoringTestHelpers.GetInt(HealthOf(reimported.Children[1]), nameof(TestHealth.Current)));
         Assert.Equal(100, AuthoringTestHelpers.GetInt(HealthOf(reimported.Children[1]), nameof(TestHealth.Max)));
@@ -190,7 +190,7 @@ public sealed class NestedPrefabTests : IDisposable
     {
         (string guid, string prefabPath) = WritePrefab();
 
-        var importer = new SceneAssetImporter(CatalogStub.Schemas);
+        var importer = new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
 
         HierarchyNode instance = await importer.InstantiateNestedAsync(guid, prefabPath);
         Assert.EndsWith(":obj-root", instance.ObjectId);
@@ -206,7 +206,7 @@ public sealed class NestedPrefabTests : IDisposable
 
         File.WriteAllText(hostPath + ".meta", $"{{\"guid\":\"{Guid.NewGuid():N}\"}}");
         var reimported = AuthoringTestHelpers.SceneOf(await importer.ImportAsync(
-            new AssetImportRequest(hostPath, "Built.scene", _assetsRoot)));
+            new AssetImportRequest(hostPath, "Built.scene")));
         Assert.Equal(instance.ObjectId, reimported.Children.Single().ObjectId);
         Assert.Equal(100, AuthoringTestHelpers.GetInt(HealthOf(reimported.Children.Single()), nameof(TestHealth.Current)));
     }
@@ -216,7 +216,7 @@ public sealed class NestedPrefabTests : IDisposable
     {
         (string guid, string prefabPath) = WritePrefab();
 
-        var importer = new SceneAssetImporter(CatalogStub.Schemas);
+        var importer = new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
         HierarchyNode first = await importer.InstantiateNestedAsync(guid, prefabPath);
         HierarchyNode second = await importer.InstantiateNestedAsync(guid, prefabPath);
 
@@ -238,8 +238,8 @@ public sealed class NestedPrefabTests : IDisposable
         File.WriteAllText(pathB, $$"""{ "Id": "b", "Name": "B", "Components": [], "Children": [ { "Id": "lb", "Prefab": "{{guidA}}", "Overrides": [] } ] }""");
         File.WriteAllText(pathB + ".meta", $"{{\"guid\":\"{guidB}\"}}");
 
-        AssetImportResult result = await new SceneAssetImporter(CatalogStub.Schemas).ImportAsync(
-            new AssetImportRequest(pathA, "A.scene", _assetsRoot));
+        AssetImportResult result = await new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot)).ImportAsync(
+            new AssetImportRequest(pathA, "A.scene"));
 
         Assert.False(result.Success);
         Assert.Contains("cycle", result.Message);
@@ -252,8 +252,8 @@ public sealed class NestedPrefabTests : IDisposable
         File.WriteAllText(hostPath, """{ "Id": "h", "Name": "H", "Components": [], "Children": [ { "Id": "lx", "Prefab": "deadbeef", "Overrides": [] } ] }""");
         File.WriteAllText(hostPath + ".meta", $"{{\"guid\":\"{Guid.NewGuid():N}\"}}");
 
-        AssetImportResult result = await new SceneAssetImporter(CatalogStub.Schemas).ImportAsync(
-            new AssetImportRequest(hostPath, "Orphan.scene", _assetsRoot));
+        AssetImportResult result = await new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot)).ImportAsync(
+            new AssetImportRequest(hostPath, "Orphan.scene"));
 
         Assert.False(result.Success);
     }
@@ -264,14 +264,14 @@ public sealed class NestedPrefabTests : IDisposable
         (string guid, _) = WritePrefab();
         string hostPath = WriteHost(guid);
 
-        var importSession = new SceneAssetImporter(CatalogStub.Schemas);
+        var importSession = new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
         var root = AuthoringTestHelpers.SceneOf(await importSession.ImportAsync(
-            new AssetImportRequest(hostPath, "Level.scene", _assetsRoot)));
+            new AssetImportRequest(hostPath, "Level.scene")));
 
         HierarchyNode bodyB = root.Children[1].Children.Single(c => c.Name == "Body");
         AuthoringTestHelpers.SetNumber(bodyB.Components[0], nameof(TestHealth.Current), 42);
 
-        var restartedSession = new SceneAssetImporter(CatalogStub.Schemas);
+        var restartedSession = new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
         await restartedSession.SaveAsync(root, hostPath);
         string saved = await File.ReadAllTextAsync(hostPath);
 
@@ -280,8 +280,8 @@ public sealed class NestedPrefabTests : IDisposable
         Assert.Contains("\"Object\": \"leaf-a:obj-body\"", saved);
         Assert.Contains("42", saved);
 
-        var reimported = AuthoringTestHelpers.SceneOf(await new SceneAssetImporter(CatalogStub.Schemas).ImportAsync(
-            new AssetImportRequest(hostPath, "Level.scene", _assetsRoot)));
+        var reimported = AuthoringTestHelpers.SceneOf(await new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot)).ImportAsync(
+            new AssetImportRequest(hostPath, "Level.scene")));
         Assert.Equal(25, AuthoringTestHelpers.GetInt(HealthOf(reimported.Children[0]), nameof(TestHealth.Current)));
         Assert.Equal(42, AuthoringTestHelpers.GetInt(HealthOf(reimported.Children[1]), nameof(TestHealth.Current)));
     }
@@ -289,7 +289,7 @@ public sealed class NestedPrefabTests : IDisposable
     [Fact]
     public void IsNestedInstanceRoot_marks_only_the_boundary()
     {
-        var importer = new SceneAssetImporter(CatalogStub.Schemas);
+        var importer = new SceneAssetImporter(CatalogStub.Schemas, TestSources.In(_assetsRoot));
 
         Assert.True(importer.IsNestedInstanceRoot("leaf-a:obj-root", "host-root"));
         Assert.False(importer.IsNestedInstanceRoot("leaf-a:obj-body", "leaf-a:obj-root"));
