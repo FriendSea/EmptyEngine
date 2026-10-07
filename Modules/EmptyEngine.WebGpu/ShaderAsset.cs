@@ -30,7 +30,7 @@ public sealed class ShaderAsset
     public ShaderTextureSlot[] TextureSlots { get; set; } = [];
 }
 
-/// <summary>同梱の既定シェーダのアセットキー</summary>
+/// <summary>コンポーネント種別ごとの、同梱の既定の頂点シェーダのアセットキー</summary>
 /// <remarks>実体は EmptyEngine.WebGpu.Editor が同梱するソースアセット（<c>assets/*.wgsl</c>）。その <c>.meta</c> の guid と、props の <c>DistributionRoot</c> に同じ値を書く。</remarks>
 public static class BuiltinShaders
 {

@@ -58,13 +58,17 @@ public sealed class MaterialAsset : IAssetResolutionHook
 }
 
 /// <summary>マテリアル未指定のコンポーネントが使う、同梱の既定マテリアルのアセットキー</summary>
-/// <remarks>実体は EmptyEngine.WebGpu.Editor が同梱するソースアセット（<c>assets/*.asset</c>）。その <c>.meta</c> の guid と、props の <c>DistributionRoot</c> に同じ値を書く。</remarks>
+/// <remarks>
+/// 2 つは描画状態だけが違い、同じフラグメントシェーダ（テクスチャ × 色）を使う。
+/// 実体は EmptyEngine.WebGpu.Editor が同梱するソースアセット（<c>assets/Opaque.asset</c>、<c>assets/Transparent.asset</c>）。その <c>.meta</c> の guid と、props の <c>DistributionRoot</c> に同じ値を書く。
+/// </remarks>
 public static class BuiltinMaterials
 {
-    public const string Sprite = "da3bdabebb974e38adeea904f3ddb830";
-    public const string Mesh = "656bbdeb09f144b3a145fa75abcf7736";
-    public const string Line = "6255742c073844f58ada2ba1a136f7e0";
-    public const string Effect = "b93b912e7e0a458c8b0c880218ae0041";
+    /// <summary>不透明（合成なし、深度を書く）。Mesh の既定</summary>
+    public const string Opaque = "656bbdeb09f144b3a145fa75abcf7736";
+
+    /// <summary>半透明（アルファ合成、深度は書かない）。Sprite・LineRenderer・Effect の既定</summary>
+    public const string Transparent = "da3bdabebb974e38adeea904f3ddb830";
 }
 
 /// <summary>描画先との合成</summary>

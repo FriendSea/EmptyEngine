@@ -71,7 +71,7 @@ public sealed class MaterialTests
         ShaderAsset material = QuadShader();
         ShaderAsset builtin = QuadShader();
 
-        Assert.Same(component, MaterialRenderSupport.SelectVertexShader(MaterialVertexKind.Quad, component, material, builtin));
+        Assert.Same(component, VertexShaderSelection.Select(MaterialVertexKind.Quad, component, material, builtin));
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class MaterialTests
     {
         ShaderAsset material = QuadShader();
 
-        Assert.Same(material, MaterialRenderSupport.SelectVertexShader(MaterialVertexKind.Quad, null, material, QuadShader()));
+        Assert.Same(material, VertexShaderSelection.Select(MaterialVertexKind.Quad, null, material, QuadShader()));
     }
 
     [Fact]
@@ -88,7 +88,7 @@ public sealed class MaterialTests
         ShaderAsset builtin = QuadShader();
         var warnings = new List<string>();
 
-        ShaderAsset? selected = MaterialRenderSupport.SelectVertexShader(
+        ShaderAsset? selected = VertexShaderSelection.Select(
             MaterialVertexKind.Quad, null, FragmentOnly(), builtin, warnings.Add);
 
         Assert.Same(builtin, selected);
@@ -101,7 +101,7 @@ public sealed class MaterialTests
         ShaderAsset material = QuadShader();
         var warnings = new List<string>();
 
-        ShaderAsset? selected = MaterialRenderSupport.SelectVertexShader(
+        ShaderAsset? selected = VertexShaderSelection.Select(
             MaterialVertexKind.Quad, MeshShader(), material, QuadShader(), warnings.Add);
 
         Assert.Same(material, selected);
@@ -115,7 +115,7 @@ public sealed class MaterialTests
         var warnings = new List<string>();
 
         // スプライト用に書かれた VS+FS のシェーダを Effect のマテリアルに使うと、FS だけが使われる。
-        ShaderAsset? selected = MaterialRenderSupport.SelectVertexShader(
+        ShaderAsset? selected = VertexShaderSelection.Select(
             MaterialVertexKind.Effect, null, QuadShader(), builtin, warnings.Add);
 
         Assert.Same(builtin, selected);
@@ -128,24 +128,24 @@ public sealed class MaterialTests
     [InlineData((int)MaterialVertexKind.Line, false)]
     [InlineData((int)MaterialVertexKind.Effect, false)]
     public void A_quad_vertex_shader_fits_only_the_quad_layout(int kind, bool fits)
-        => Assert.Equal(fits, MaterialRenderSupport.Fits((MaterialVertexKind)kind, QuadShader()));
+        => Assert.Equal(fits, VertexShaderSelection.Fits((MaterialVertexKind)kind, QuadShader()));
 
     [Fact]
     public void A_vertex_shader_may_take_only_some_of_the_attributes()
     {
         ShaderAsset positionOnly = Shader(true, (0, "vec3<f32>"));
 
-        Assert.True(MaterialRenderSupport.Fits(MaterialVertexKind.Line, positionOnly));
-        Assert.True(MaterialRenderSupport.Fits(MaterialVertexKind.Mesh, positionOnly));
-        Assert.False(MaterialRenderSupport.Fits(MaterialVertexKind.Quad, positionOnly));
+        Assert.True(VertexShaderSelection.Fits(MaterialVertexKind.Line, positionOnly));
+        Assert.True(VertexShaderSelection.Fits(MaterialVertexKind.Mesh, positionOnly));
+        Assert.False(VertexShaderSelection.Fits(MaterialVertexKind.Quad, positionOnly));
     }
 
     [Fact]
     public void An_effect_takes_only_a_vertex_shader_without_attributes()
     {
-        Assert.True(MaterialRenderSupport.Fits(MaterialVertexKind.Effect, EffectShader()));
-        Assert.False(MaterialRenderSupport.Fits(MaterialVertexKind.Quad, EffectShader()));
-        Assert.False(MaterialRenderSupport.Fits(MaterialVertexKind.Effect, FragmentOnly()));
+        Assert.True(VertexShaderSelection.Fits(MaterialVertexKind.Effect, EffectShader()));
+        Assert.False(VertexShaderSelection.Fits(MaterialVertexKind.Quad, EffectShader()));
+        Assert.False(VertexShaderSelection.Fits(MaterialVertexKind.Effect, FragmentOnly()));
     }
 
     [Theory]

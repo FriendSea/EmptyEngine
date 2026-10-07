@@ -105,9 +105,10 @@ public sealed class ShaderParamsInspectorTests : IDisposable
         ]);
         Assert.Equal(typeof(ShaderParamsInspector), registry.Resolve(component.Schema));
 
-        FieldViewModel[] parameters = ShaderParamsInspector.BuildParams(
+        (FieldViewModel[] parameters, string[] warnings) = ShaderParamsInspector.BuildParams(
             viewModel,
             key => key.Value == shaderKey ? shader : null);
+        Assert.Empty(warnings);
 
         // コンポーネントに出るのは group(0) の分だけ。マテリアル側の cutoff は出ない。
         Assert.Equal(["scale", "tint"], parameters.Select(field => field.Name));
@@ -138,7 +139,7 @@ public sealed class ShaderParamsInspectorTests : IDisposable
         (AssetCatalog catalog, string shaderKey, string materialKey) = await ProjectWithMaterialAsync(FullShader);
         AuthoringObjectViewModel component = ViewModel(Component(LineRendererType, materialKey: materialKey));
 
-        FieldViewModel[] parameters = ShaderParamsInspector.BuildParams(component, key => catalog.GetAsset(key.Value));
+        (FieldViewModel[] parameters, _) = ShaderParamsInspector.BuildParams(component, key => catalog.GetAsset(key.Value));
 
         Assert.NotEqual(shaderKey, materialKey);
         Assert.Equal(["scale", "tint"], parameters.Select(field => field.Name));
@@ -157,7 +158,30 @@ public sealed class ShaderParamsInspectorTests : IDisposable
             """);
         AuthoringObjectViewModel component = ViewModel(Component(SpriteType, materialKey: materialKey));
 
-        Assert.Empty(ShaderParamsInspector.BuildParams(component, key => catalog.GetAsset(key.Value)));
+        (FieldViewModel[] parameters, string[] warnings) =
+            ShaderParamsInspector.BuildParams(component, key => catalog.GetAsset(key.Value));
+
+        Assert.Empty(parameters);
+        Assert.Empty(warnings);
+    }
+
+    /// <summary>頂点入力の合わないシェーダは描画と同じく飛ばされ、その枠は出ず、警告が出る</summary>
+    [Fact]
+    public async Task A_shader_that_does_not_fit_the_component_is_skipped_with_a_warning()
+    {
+        // FullShader は位置 vec3 を受け取るので、Line には合うが Sprite（quad は vec2）には合わない。
+        (AssetCatalog catalog, string shaderKey, string materialKey) = await ProjectWithMaterialAsync(FullShader);
+        Func<AssetKey, AuthoringObject?> assets = key => catalog.GetAsset(key.Value);
+
+        (FieldViewModel[] own, string[] ownWarnings) =
+            ShaderParamsInspector.BuildParams(ViewModel(Component(SpriteType, shaderKey: shaderKey)), assets);
+        Assert.Empty(own);
+        Assert.Contains("Quad", Assert.Single(ownWarnings));
+
+        (FieldViewModel[] viaMaterial, string[] materialWarnings) =
+            ShaderParamsInspector.BuildParams(ViewModel(Component(SpriteType, materialKey: materialKey)), assets);
+        Assert.Empty(viaMaterial);
+        Assert.Contains("Quad", Assert.Single(materialWarnings));
     }
 
     /// <summary>マテリアルのインスペクタは、シェーダの group(2) の枠を出し、値をマテリアルへ書く</summary>
@@ -196,15 +220,15 @@ public sealed class ShaderParamsInspectorTests : IDisposable
         Assert.Equal("texture-key", Assert.IsType<FieldValue>(data.Get("Textures")).Items[0].ReferenceKey);
     }
 
-    /// <summary>同梱の既定シェーダと既定マテリアルは、コードが持つキーで取り込まれ、同じキーが配布の起点として宣言されている</summary>
+    /// <summary>同梱の既定の頂点シェーダと既定マテリアルは、コードが持つキーで取り込まれ、同じキーが配布の起点として宣言されている</summary>
     [Fact]
     public async Task Shipped_assets_import_under_the_keys_the_components_resolve()
     {
         AssetCatalog catalog = await ShippedAssetsAsync();
 
         string[] shaders = [BuiltinShaders.Sprite, BuiltinShaders.Mesh, BuiltinShaders.Line, BuiltinShaders.Effect];
-        string[] materials = [BuiltinMaterials.Sprite, BuiltinMaterials.Mesh, BuiltinMaterials.Line, BuiltinMaterials.Effect];
         Assert.All(shaders, key => Assert.Equal(typeof(ShaderAsset).FullName, catalog.GetAsset(key)?.TypeName));
+        string[] materials = [BuiltinMaterials.Opaque, BuiltinMaterials.Transparent];
         Assert.All(materials, key => Assert.Equal(typeof(MaterialAsset).FullName, catalog.GetAsset(key)?.TypeName));
         Assert.Equal(
             [.. shaders, .. materials],
@@ -212,34 +236,34 @@ public sealed class ShaderParamsInspectorTests : IDisposable
                 .Descendants("DistributionRoot").Select(root => root.Attribute("Include")!.Value));
         Assert.Equal(
             [
-                "Packages/EmptyEngine.WebGpu/Effect.asset", "Packages/EmptyEngine.WebGpu/Effect.wgsl",
-                "Packages/EmptyEngine.WebGpu/Line.asset", "Packages/EmptyEngine.WebGpu/Line.wgsl",
-                "Packages/EmptyEngine.WebGpu/Mesh.asset", "Packages/EmptyEngine.WebGpu/Mesh.wgsl",
-                "Packages/EmptyEngine.WebGpu/Sprite.asset", "Packages/EmptyEngine.WebGpu/Sprite.wgsl",
+                "Packages/EmptyEngine.WebGpu/Default.wgsl", "Packages/EmptyEngine.WebGpu/Effect.wgsl",
+                "Packages/EmptyEngine.WebGpu/Line.wgsl", "Packages/EmptyEngine.WebGpu/Mesh.wgsl",
+                "Packages/EmptyEngine.WebGpu/Opaque.asset", "Packages/EmptyEngine.WebGpu/Sprite.wgsl",
+                "Packages/EmptyEngine.WebGpu/Transparent.asset",
             ],
             catalog.EnumerateAssets().Select(entry => entry.DisplayPath).Order(StringComparer.Ordinal));
     }
 
-    /// <summary>同梱の既定マテリアルは、同じ種別の同梱シェーダを指し、そのシェーダは頂点もフラグメントも持つ</summary>
+    /// <summary>同梱の頂点シェーダは頂点だけ、2 つの既定マテリアルが共用するシェーダはフラグメントだけを持つ</summary>
     [Fact]
-    public async Task Each_shipped_material_points_at_a_shipped_shader_with_both_stages()
+    public async Task Shipped_vertex_shaders_and_the_default_materials_shader_each_hold_one_stage()
     {
         AssetCatalog catalog = await ShippedAssetsAsync();
-        (string Material, string Shader)[] pairs =
-        [
-            (BuiltinMaterials.Sprite, BuiltinShaders.Sprite),
-            (BuiltinMaterials.Mesh, BuiltinShaders.Mesh),
-            (BuiltinMaterials.Line, BuiltinShaders.Line),
-            (BuiltinMaterials.Effect, BuiltinShaders.Effect),
-        ];
 
-        Assert.All(pairs, pair =>
-        {
-            Assert.Equal(pair.Shader, catalog.GetAsset(pair.Material)!.Data.Get("Shader")!.ReferenceKey);
-            FieldValue shader = catalog.GetAsset(pair.Shader)!.Data;
-            Assert.True(shader.Get("HasVertex")!.Bool);
-            Assert.True(shader.Get("HasFragment")!.Bool);
-        });
+        Assert.All(
+            [BuiltinShaders.Sprite, BuiltinShaders.Mesh, BuiltinShaders.Line, BuiltinShaders.Effect],
+            key =>
+            {
+                FieldValue vertex = catalog.GetAsset(key)!.Data;
+                Assert.True(vertex.Get("HasVertex")!.Bool);
+                Assert.False(vertex.Get("HasFragment")!.Bool);
+            });
+
+        string fragmentKey = catalog.GetAsset(BuiltinMaterials.Opaque)!.Data.Get("Shader")!.ReferenceKey!;
+        Assert.Equal(fragmentKey, catalog.GetAsset(BuiltinMaterials.Transparent)!.Data.Get("Shader")!.ReferenceKey);
+        FieldValue fragment = catalog.GetAsset(fragmentKey)!.Data;
+        Assert.False(fragment.Get("HasVertex")!.Bool);
+        Assert.True(fragment.Get("HasFragment")!.Bool);
     }
 
     /// <summary>モジュールが同梱する既定アセットを、パッケージのアセットとして取り込んだカタログ</summary>

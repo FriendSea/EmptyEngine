@@ -100,7 +100,7 @@ public sealed unsafe partial class SpriteComponent : ISpriteRenderer, IShaderPar
     /// <summary>頂点シェーダの決定と、それに合わせた <see cref="Params"/> の枠の更新</summary>
     private void ApplyShaders()
     {
-        _vertexShader = MaterialRenderSupport.SelectVertexShader(
+        _vertexShader = VertexShaderSelection.Select(
             MaterialVertexKind.Quad, _resolvedShader, _resolvedMaterial?.ResolvedShader, _builtinShader);
         Params = ShaderParamsHost.Reconcile(_vertexShader?.VertexParams, Params);
     }
@@ -229,7 +229,7 @@ public sealed partial class SpriteComponent
     public async ValueTask OnResolveAssetsAsync(IAssetResolver resolver)
     {
         await ResolveAssetFieldsAsync(resolver);
-        _resolvedMaterial ??= await resolver.ResolveAsync(new AssetReference<MaterialAsset>(BuiltinMaterials.Sprite));
+        _resolvedMaterial ??= await resolver.ResolveAsync(new AssetReference<MaterialAsset>(BuiltinMaterials.Transparent));
         _builtinShader = await resolver.ResolveAsync(new AssetReference<ShaderAsset>(BuiltinShaders.Sprite));
         ApplyShaders();
     }

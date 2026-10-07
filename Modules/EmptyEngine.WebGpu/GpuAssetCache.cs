@@ -299,22 +299,6 @@ public sealed unsafe class GpuAssetCache : IDisposable
     }
 }
 
-/// <summary>コンポーネント種別ごとの頂点入力（頂点バッファの並び・トポロジ・カリング）</summary>
-internal enum MaterialVertexKind
-{
-    /// <summary>共有 quad 頂点（位置 2 + UV 2）</summary>
-    Quad = 0,
-
-    /// <summary>メッシュ頂点（位置 3 + 法線 3 + UV 2）</summary>
-    Mesh = 1,
-
-    /// <summary>折れ線の triangle strip（位置 3 + UV 2）</summary>
-    Line = 2,
-
-    /// <summary>頂点バッファ無し（<c>vertex_index</c> から組み立てる）</summary>
-    Effect = 3,
-}
-
 /// <summary>パイプラインを 1 つに決める条件</summary>
 /// <remarks>マテリアルそのものは含めない。同じシェーダと描画状態のマテリアルは、パイプラインを共有する。</remarks>
 internal readonly record struct MaterialPipelineKey(

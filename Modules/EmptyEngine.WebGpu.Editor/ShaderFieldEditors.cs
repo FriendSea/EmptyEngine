@@ -87,6 +87,25 @@ internal static class ShaderFieldEditors
     /// <summary>シェーダが <c>vs_main</c> を持つか</summary>
     public static bool HasVertex(AuthoringObject shader) => shader.Data.Get("HasVertex")?.Bool ?? false;
 
+    /// <summary>シェーダの <c>vs_main</c> が受け取る頂点属性</summary>
+    public static ShaderVertexInput[] ReadVertexInputs(AuthoringObject shader)
+    {
+        if (shader.Data.Get("VertexInputs") is not { IsNull: false } array) return [];
+
+        var result = new List<ShaderVertexInput>(array.Items.Count);
+        foreach (FieldValue item in array.Items)
+        {
+            if (item.IsNull) continue;
+            result.Add(new ShaderVertexInput
+            {
+                Location = (int)(item.Get("Location")?.Integer ?? 0),
+                Type = ReadString(item, "Type"),
+            });
+        }
+
+        return result.ToArray();
+    }
+
     /// <summary>シェーダの <paramref name="field"/>（<c>VertexParams</c> か <c>FragmentParams</c>）の宣言</summary>
     public static ShaderParam[] ReadParams(AuthoringObject? shader, string field)
     {

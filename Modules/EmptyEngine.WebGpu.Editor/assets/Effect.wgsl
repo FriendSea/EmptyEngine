@@ -35,11 +35,3 @@ fn vs_main(@builtin(vertex_index) index: u32) -> VsOut {
     out.normal = vec3<f32>(0.0, 0.0, -1.0);
     return out;
 }
-
-@group(3) @binding(0) var tex: texture_2d<f32>;
-@group(3) @binding(1) var samp: sampler;
-
-@fragment
-fn fs_main(@location(0) uv: vec2<f32>, @location(1) color: vec4<f32>) -> @location(0) vec4<f32> {
-    return textureSample(tex, samp, uv) * color;
-}
