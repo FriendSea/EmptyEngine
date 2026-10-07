@@ -1,3 +1,4 @@
+using System.Numerics;
 using Xunit;
 using GraphicsColor = EmptyEngine.Graphics.Color;
 
@@ -5,104 +6,61 @@ namespace EmptyEngine.WebGpu.Tests;
 
 public sealed class ShaderGlobalsTests
 {
-    private static ShaderParam[] Declarations =>
-    [
-        new ShaderParam { Name = "fogDensity", Kind = ShaderParamKind.Float, Default = 0.25f },
-        new ShaderParam
-        {
-            Name = "fogColor",
-            Kind = ShaderParamKind.Color,
-            Default = 0.1f,
-            DefaultG = 0.2f,
-            DefaultB = 0.3f,
-            DefaultA = 1f,
-        },
-    ];
-
     [Fact]
-    public void Values_land_on_the_offsets_the_shader_declaration_implies()
+    public void Values_land_on_the_slot_they_were_set_to()
     {
         var globals = new ShaderGlobals();
-        globals.SetFloat("fogDensity", 0.75f);
-        globals.SetColor("fogColor", new GraphicsColor(1f, 0.5f, 0.25f, 0.5f));
+        globals.SetFloat(1, 0.75f);
+        globals.SetColor(0, new GraphicsColor(1f, 0.5f, 0.25f, 0.5f));
 
-        // vec4 は 16 byte 境界へ寄るので、f32 1 つのあとに 3 float 分の穴が空く。
-        Span<float> packed = stackalloc float[8];
-        globals.Pack(Declarations, packed);
-
-        Assert.Equal(0.75f, packed[0]);
-        Assert.Equal(0f, packed[1]);
-        Assert.Equal(0f, packed[2]);
-        Assert.Equal(0f, packed[3]);
-        Assert.Equal(new[] { 1f, 0.5f, 0.25f, 0.5f }, packed[4..8].ToArray());
+        Assert.Equal(new Vector4(1f, 0.5f, 0.25f, 0.5f), globals.Values[0]);
+        Assert.Equal(new Vector4(0.75f, 0f, 0f, 0f), globals.Values[1]);
     }
 
     [Fact]
-    public void Unset_names_fall_back_to_the_declared_defaults()
+    public void Unset_slots_read_as_zero()
     {
         var globals = new ShaderGlobals();
-        globals.SetFloat("fogDensity", 0.75f);
+        globals.SetFloat(3, 2f);
 
-        Span<float> packed = stackalloc float[8];
-        globals.Pack(Declarations, packed);
-
-        Assert.Equal(0.75f, packed[0]);
-        Assert.Equal(new[] { 0.1f, 0.2f, 0.3f, 1f }, packed[4..8].ToArray());
-    }
-
-    [Fact]
-    public void Names_the_shader_never_declared_do_not_reach_the_buffer()
-    {
-        var globals = new ShaderGlobals();
-        globals.SetFloat("windSpeed", 3f);
-
-        Span<float> packed = stackalloc float[8];
-        globals.Pack(Declarations, packed);
-
-        Assert.Equal(0.25f, packed[0]);
-        Assert.Equal(new[] { 0.1f, 0.2f, 0.3f, 1f }, packed[4..8].ToArray());
+        Assert.Equal(ShaderGlobals.SlotCount, globals.Values.Length);
+        Assert.Equal(Vector4.Zero, globals.Values[0]);
+        Assert.Equal(Vector4.Zero, globals.GetVector(ShaderGlobals.SlotCount - 1));
     }
 
     [Fact]
     public void Writing_the_same_value_again_does_not_advance_the_version()
     {
         var globals = new ShaderGlobals();
-        globals.SetColor("fogColor", GraphicsColor.White);
+        globals.SetColor(0, GraphicsColor.White);
         int version = globals.Version;
 
-        globals.SetColor("fogColor", GraphicsColor.White);
+        globals.SetColor(0, GraphicsColor.White);
         Assert.Equal(version, globals.Version);
 
-        globals.SetColor("fogColor", GraphicsColor.Black);
+        globals.SetColor(0, GraphicsColor.Black);
         Assert.NotEqual(version, globals.Version);
     }
 
     [Fact]
-    public void Removing_a_value_advances_the_version_and_restores_the_default()
+    public void Clearing_a_slot_advances_the_version_and_restores_zero()
     {
         var globals = new ShaderGlobals();
-        globals.SetFloat("fogDensity", 0.75f);
+        globals.SetFloat(1, 0.75f);
         int version = globals.Version;
 
-        Assert.True(globals.Remove("fogDensity"));
-        Assert.NotEqual(version, globals.Version);
-        Assert.False(globals.Remove("fogDensity"));
+        globals.Clear(1);
 
-        Span<float> packed = stackalloc float[8];
-        globals.Pack(Declarations, packed);
-        Assert.Equal(0.25f, packed[0]);
+        Assert.NotEqual(version, globals.Version);
+        Assert.Equal(Vector4.Zero, globals.GetVector(1));
     }
 
     [Fact]
-    public void Set_values_read_back_by_name()
+    public void A_slot_outside_the_range_is_rejected()
     {
         var globals = new ShaderGlobals();
-        globals.SetColor("fogColor", new GraphicsColor(0.2f, 0.4f, 0.6f, 0.8f));
 
-        Assert.True(globals.TryGetColor("fogColor", out GraphicsColor color));
-        Assert.Equal(new GraphicsColor(0.2f, 0.4f, 0.6f, 0.8f), color);
-        Assert.False(globals.TryGetFloat("fogDensity", out float density));
-        Assert.Equal(0f, density);
+        Assert.Throws<IndexOutOfRangeException>(() => globals.SetFloat(ShaderGlobals.SlotCount, 1f));
     }
 
     [Fact]
@@ -111,10 +69,9 @@ public sealed class ShaderGlobalsTests
         var left = new RenderWorld();
         var right = new RenderWorld();
 
-        left.Globals.SetFloat("fogDensity", 0.5f);
+        left.Globals.SetFloat(1, 0.5f);
 
-        Assert.True(left.Globals.TryGetFloat("fogDensity", out float density));
-        Assert.Equal(0.5f, density);
-        Assert.False(right.Globals.TryGetFloat("fogDensity", out _));
+        Assert.Equal(0.5f, left.Globals.GetVector(1).X);
+        Assert.Equal(0f, right.Globals.GetVector(1).X);
     }
 }

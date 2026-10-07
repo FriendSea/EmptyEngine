@@ -1,5 +1,4 @@
 ﻿using System.Numerics;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using EmptyEngine.Core;
 using EmptyEngine.Generators;
@@ -21,49 +20,40 @@ public enum EffectSimulationSpace
 public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderParamsHost
 {
     private const int UniformSize = 240;
-    private const uint HistoryBinding = 31;
-    private const int HistoryCapacity = 128;
-    private const int HistoryHeaderFloatCount = 4;
-    private const int HistorySampleFloatCount = 20;
-    private const int HistoryBufferFloatCount = HistoryHeaderFloatCount + HistoryCapacity * HistorySampleFloatCount;
-    private const int HistoryBufferSize = HistoryBufferFloatCount * sizeof(float);
+    private const int HistoryCapacity = MaterialRenderSupport.HistoryCapacity;
+    private const int HistoryHeaderFloatCount = MaterialRenderSupport.HistoryHeaderFloatCount;
+    private const int HistorySampleFloatCount = MaterialRenderSupport.HistorySampleFloatCount;
+    private const int HistoryBufferFloatCount = MaterialRenderSupport.HistoryBufferFloatCount;
+    private const int HistoryBufferSize = MaterialRenderSupport.HistoryBufferSize;
     private static readonly Regex HistoryBindingRegex = new(
         @"@group\s*\(\s*0\s*\)\s*@binding\s*\(\s*31\s*\)", RegexOptions.Compiled);
 
     private readonly RenderWorld _renderWorld;
     private readonly float[] _historyData = new float[HistoryBufferFloatCount];
 
-    /// <summary>描画に使う WGSL シェーダの解決済み実体</summary>
+    /// <summary>頂点シェーダに使う WGSL シェーダの解決済み実体</summary>
     [ResolveAsset("Shader")]
     private ShaderAsset? _resolvedShader;
 
-    private ShaderAsset? _realizedShader;
-    private TextureAsset?[] _resolvedSlotTextures = [];
-    private TextureAsset?[] _realizedSlotTextures = [];
+    /// <summary>描画に使うマテリアルの解決済み実体</summary>
+    [ResolveAsset("Material")]
+    private MaterialAsset? _resolvedMaterial;
+
+    /// <summary>メインテクスチャの解決済み実体（空なら白）</summary>
+    [ResolveAsset("MainTexture")]
+    private TextureAsset? _resolvedMainTexture;
+
+    private ShaderAsset? _builtinShader;
+    private ShaderAsset? _vertexShader;
     private int _realizedQuadCount = -1;
-    private bool _resourcesBuilt;
     private bool _usesSimulationHistory;
     private GpuResourcePool? _pool;
-    private GpuAssetCache? _cache;
-    private ShaderAsset? _borrowedPipelineShader;
-    private int _borrowedPipelineLayoutKey;
     private float _startTime = -1f;
     private IObject? _owner;
 
-    private RenderPipeline* _pipeline;
-    private PipelineLayout* _pipelineLayout;
-    private BindGroupLayout* _bindGroupLayout;
-    private BindGroup* _bindGroup;
-    private WgpuBuffer* _uniformBuffer;
-    private WgpuBuffer* _paramBuffer;
-    private WgpuBuffer* _historyBuffer;
     private WgpuBuffer* _indexBuffer;
-    private Texture*[] _slotTextures = [];
-    private TextureView*[] _slotTextureViews = [];
     private uint _indexCount;
-    private ShaderDepthState _shaderDepth = ShaderDepthState.Transparent;
-    private int _renderQueue = ShaderRenderQueue.Transparent;
-    private readonly ShaderGlobalsBinding _globals = new();
+    private readonly MaterialBinding _binding = new();
     private int _historyCount;
     private int _historyWriteIndex = -1;
     private float _historyInterval;
@@ -92,14 +82,8 @@ public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderPar
     /// <summary>シェーダへ渡す乗算カラー（RGBA 各成分 0..1）</summary>
     public GraphicsColor Color { get; set; } = GraphicsColor.White;
 
-    /// <summary>シェーダのユーザ定義パラメータの値</summary>
+    /// <summary>頂点シェーダが宣言するパラメータの値</summary>
     public float[] Params { get; set; } = [];
-
-    /// <summary>シェーダが宣言したテクスチャスロットへ貼るテクスチャ参照</summary>
-    public AssetReference<TextureAsset>[] Textures { get; set; } = [];
-
-    /// <summary>現在解決済みのシェーダ</summary>
-    public ShaderAsset? ResolvedShader => _resolvedShader;
 
     /// <inheritdoc/>
     public IObject? Owner => _owner;
@@ -108,12 +92,10 @@ public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderPar
     public int RenderLayer => SpriteRenderSupport.GetRenderLayer(_owner) + SortOrder;
 
     /// <inheritdoc/>
-    public bool IsTransparent => _renderQueue >= ShaderRenderQueue.Transparent;
+    public bool IsTransparent => RenderQueue >= ShaderRenderQueue.Transparent;
 
     /// <inheritdoc/>
-    public int RenderQueue => _renderQueue;
-
-    private int ParamBufferSize => Math.Max(16, (((Params?.Length ?? 0) * sizeof(float)) + 15) & ~15);
+    public int RenderQueue => _resolvedMaterial?.Queue ?? ShaderRenderQueue.Transparent;
 
     public void OnCreated(IObject owner)
     {
@@ -128,40 +110,53 @@ public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderPar
 
         if (Color == default) Color = GraphicsColor.White;
 
-        Textures ??= [];
-
         _renderWorld.RegisterRenderer(this);
 
-        if (_resolvedShader is not null) Params = ShaderParamsHost.Reconcile(_resolvedShader.Params, Params);
+        ApplyShaders();
+    }
 
-        _shaderDepth = _resolvedShader is null
-            ? ShaderDepthState.Transparent
-            : ShaderBlend.ResolveDepth(_resolvedShader, ShaderDepthState.Transparent);
-        _renderQueue = _resolvedShader is null
-            ? ShaderRenderQueue.Transparent
-            : ShaderBlend.ResolveRenderQueue(_resolvedShader, ShaderRenderQueue.Transparent);
-
+    /// <summary>頂点シェーダの決定と、それに合わせた <see cref="Params"/> の枠の更新</summary>
+    private void ApplyShaders()
+    {
+        _vertexShader = MaterialRenderSupport.SelectVertexShader(
+            MaterialVertexKind.Effect, _resolvedShader, _resolvedMaterial?.ResolvedShader, _builtinShader);
+        Params = ShaderParamsHost.Reconcile(_vertexShader?.VertexParams, Params);
     }
 
     public void OnDestroy(IObject owner)
     {
         _renderWorld.UnregisterRenderer(this);
-        ReleaseResources();
+        ReleaseIndexBuffer();
+        _binding.Release();
         _owner = null;
         _resolvedShader = null;
-        _realizedShader = null;
-        _resolvedSlotTextures = [];
-        _realizedSlotTextures = [];
-        _shaderDepth = ShaderDepthState.Transparent;
-        _renderQueue = ShaderRenderQueue.Transparent;
+        _resolvedMaterial = null;
+        _resolvedMainTexture = null;
+        _vertexShader = null;
         ResetHistoryState();
     }
 
     public void Render(in RenderContext context)
     {
-        if (_resolvedShader is null || QuadCount <= 0) return;
+        if (QuadCount <= 0) return;
 
-        EnsureResources(in context);
+        if (!_binding.Matches(_vertexShader, _resolvedMaterial, _resolvedMainTexture, Params?.Length ?? 0))
+        {
+            // 履歴を読むのは頂点・フラグメントのどちらでもよいので、両方のソースを見る。
+            _usesSimulationHistory = UsesHistory(_vertexShader) || UsesHistory(_resolvedMaterial?.ResolvedShader);
+            _binding.Build(
+                in context, MaterialVertexKind.Effect, UniformSize, _vertexShader, _resolvedMaterial,
+                _resolvedMainTexture, context.DefaultSampler, Params?.Length ?? 0, _usesSimulationHistory);
+        }
+
+        if (!_binding.IsReady) return;
+
+        if (_realizedQuadCount != QuadCount)
+        {
+            ReleaseIndexBuffer();
+            BuildIndexBuffer(in context, QuadCount);
+            _realizedQuadCount = QuadCount;
+        }
 
         if (_startTime < 0f) _startTime = context.Time;
         float localTime = context.Time - _startTime;
@@ -187,217 +182,16 @@ public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderPar
         u[57] = 0f;
         u[58] = 0f;
         u[59] = 0f;
-        WGPU.wgpuQueueWriteBuffer(context.Queue, _uniformBuffer, 0, u, UniformSize);
+        WGPU.wgpuQueueWriteBuffer(context.Queue, _binding.UniformBuffer, 0, u, UniformSize);
 
-        if (Params is { Length: > 0 })
-        {
-            fixed (float* p = Params)
-                WGPU.wgpuQueueWriteBuffer(context.Queue, _paramBuffer, 0, p, (nuint)(Params.Length * sizeof(float)));
-        }
-
-        WGPU.wgpuRenderPassEncoderSetPipeline(context.Pass, _pipeline);
-        WGPU.wgpuRenderPassEncoderSetBindGroup(context.Pass, 0, _bindGroup, 0, null);
-        _globals.Bind(in context);
+        _binding.WriteParams(in context, Params);
+        _binding.Bind(in context);
         WGPU.wgpuRenderPassEncoderSetIndexBuffer(context.Pass, _indexBuffer, IndexFormat.Uint32, 0, (ulong)_indexCount * sizeof(uint));
         WGPU.wgpuRenderPassEncoderDrawIndexed(context.Pass, _indexCount, 1, 0, 0, 0);
     }
 
-    private void EnsureResources(in RenderContext context)
-    {
-        bool shaderChanged = !ReferenceEquals(_realizedShader, _resolvedShader);
-        bool countChanged = _realizedQuadCount != QuadCount;
-        TextureAsset?[] resolvedSlots = _resolvedSlotTextures ?? [];
-        bool slotTexturesChanged = !SlotTexturesMatch(_realizedSlotTextures, resolvedSlots);
-        if (_resourcesBuilt && !shaderChanged && !countChanged && !slotTexturesChanged) return;
-
-        if (_resourcesBuilt) ReleaseResources();
-
-        _pool = context.Resources;
-
-        BuildPipeline(in context, _resolvedShader!);
-        BuildIndexBuffer(in context, QuadCount);
-        BuildUniformAndBindGroup(in context, resolvedSlots);
-
-        _realizedShader = _resolvedShader;
-        _realizedSlotTextures = resolvedSlots;
-        _realizedQuadCount = QuadCount;
-        _resourcesBuilt = true;
-    }
-
-    private static bool SlotTexturesMatch(TextureAsset?[]? realized, TextureAsset?[] resolved)
-    {
-        if (realized is null || realized.Length != resolved.Length) return false;
-        for (int i = 0; i < resolved.Length; i++)
-        {
-            if (!ReferenceEquals(realized[i], resolved[i])) return false;
-        }
-
-        return true;
-    }
-
-    private void BuildPipeline(in RenderContext context, ShaderAsset shader)
-    {
-        string wgsl = SpriteRenderSupport.ReadShaderSource(shader);
-        _usesSimulationHistory = HistoryBindingRegex.IsMatch(wgsl);
-        _shaderDepth = ShaderBlend.ResolveDepth(shader, ShaderDepthState.Transparent);
-        _renderQueue = ShaderBlend.ResolveRenderQueue(shader, ShaderRenderQueue.Transparent);
-        _globals.Build(in context, shader, this);
-
-        // 同じ shader/layout の Effect が大量に生成・破棄されても pipeline を作り直さない。
-        // ParamBufferSize は instance の Params 配列から決まるため cache key に含める。
-        int layoutKey = ParamBufferSize | (_usesSimulationHistory ? 1 : 0);
-        if (context.Assets.TryAcquirePipeline(
-            shader, GpuPipelineVariant.Effect, layoutKey,
-            out _pipeline, out _pipelineLayout, out _bindGroupLayout))
-        {
-            _cache = context.Assets;
-            _borrowedPipelineShader = shader;
-            _borrowedPipelineLayoutKey = layoutKey;
-            return;
-        }
-
-        ShaderTextureSlot[] slots = shader.TextureSlots ?? [];
-        if (_usesSimulationHistory && slots.Any(slot => slot.Binding == HistoryBinding))
-            throw new InvalidOperationException($"Effect shader texture binding {HistoryBinding} is reserved for world-space simulation history.");
-
-        nint codePtr = Marshal.StringToCoTaskMemUTF8(wgsl);
-        nint vsEntry = Marshal.StringToCoTaskMemUTF8("vs_main");
-        nint fsEntry = Marshal.StringToCoTaskMemUTF8("fs_main");
-        ShaderModule* module = null;
-        BindGroupLayout* bindGroupLayout = null;
-        PipelineLayout* pipelineLayout = null;
-        RenderPipeline* pipeline = null;
-        try
-        {
-            var wgslDescriptor = new ShaderModuleWGSLDescriptor
-            {
-                Chain = new ChainedStruct { SType = SType.ShaderModuleWGSLDescriptor },
-                Code = (byte*)codePtr,
-            };
-            var shaderModuleDescriptor = new ShaderModuleDescriptor { NextInChain = (ChainedStruct*)&wgslDescriptor };
-            module = WGPU.wgpuDeviceCreateShaderModule(context.Device, &shaderModuleDescriptor);
-
-            int fixedEntryCount = _usesSimulationHistory ? 4 : 3;
-            var layoutEntries = stackalloc BindGroupLayoutEntry[fixedEntryCount + slots.Length];
-            layoutEntries[0] = new BindGroupLayoutEntry
-            {
-                Binding = 0,
-                Visibility = ShaderStage.Vertex | ShaderStage.Fragment,
-                Buffer = new BufferBindingLayout { Type = BufferBindingType.Uniform, MinBindingSize = UniformSize },
-            };
-            layoutEntries[1] = new BindGroupLayoutEntry
-            {
-                Binding = 2,
-                Visibility = ShaderStage.Fragment,
-                Sampler = new SamplerBindingLayout { Type = SamplerBindingType.Filtering },
-            };
-            layoutEntries[2] = new BindGroupLayoutEntry
-            {
-                Binding = 3,
-                Visibility = ShaderStage.Vertex | ShaderStage.Fragment,
-                Buffer = new BufferBindingLayout { Type = BufferBindingType.Uniform, MinBindingSize = (ulong)ParamBufferSize },
-            };
-            if (_usesSimulationHistory)
-            {
-                layoutEntries[3] = new BindGroupLayoutEntry
-                {
-                    Binding = HistoryBinding,
-                    Visibility = ShaderStage.Vertex,
-                    Buffer = new BufferBindingLayout { Type = BufferBindingType.ReadOnlyStorage, MinBindingSize = HistoryBufferSize },
-                };
-            }
-            for (int i = 0; i < slots.Length; i++)
-            {
-                layoutEntries[fixedEntryCount + i] = new BindGroupLayoutEntry
-                {
-                    Binding = (uint)slots[i].Binding,
-                    Visibility = ShaderStage.Fragment,
-                    Texture = new TextureBindingLayout
-                    {
-                        SampleType = TextureSampleType.Float,
-                        ViewDimension = TextureViewDimension.Dimension2D,
-                        Multisampled = 0,
-                    },
-                };
-            }
-            var bindGroupLayoutDescriptor = new BindGroupLayoutDescriptor
-            {
-                EntryCount = (uint)(fixedEntryCount + slots.Length),
-                Entries = layoutEntries,
-            };
-            bindGroupLayout = WGPU.wgpuDeviceCreateBindGroupLayout(context.Device, &bindGroupLayoutDescriptor);
-
-            pipelineLayout = SpriteRenderSupport.CreatePipelineLayout(in context, bindGroupLayout, _globals.Layout);
-
-            var vertexState = new VertexState
-            {
-                Module = module,
-                EntryPoint = (byte*)vsEntry,
-                BufferCount = 0,
-                Buffers = null,
-            };
-
-            var (blendColor, blendAlpha) = ShaderBlend.Resolve(shader);
-            var blendState = new BlendState { Color = blendColor, Alpha = blendAlpha };
-            var colorTargetState = new ColorTargetState
-            {
-                Format = context.TargetFormat,
-                Blend = &blendState,
-                WriteMask = ColorWriteMask.All,
-            };
-            var fragmentState = new FragmentState
-            {
-                Module = module,
-                EntryPoint = (byte*)fsEntry,
-                TargetCount = 1,
-                Targets = &colorTargetState,
-            };
-
-            DepthStencilState depthState = SpriteRenderSupport.DepthTest(
-                context.DepthFormat, _shaderDepth.WriteEnabled, _shaderDepth.Compare);
-            var pipelineDescriptor = new RenderPipelineDescriptor
-            {
-                Layout = pipelineLayout,
-                Vertex = vertexState,
-                Fragment = &fragmentState,
-                Primitive = new PrimitiveState
-                {
-                    Topology = PrimitiveTopology.TriangleList,
-                    StripIndexFormat = IndexFormat.Undefined,
-                    FrontFace = FrontFace.Ccw,
-                    CullMode = CullMode.None,
-                },
-                DepthStencil = &depthState,
-                Multisample = new MultisampleState { Count = 1, Mask = ~0u, AlphaToCoverageEnabled = 0 },
-            };
-            pipeline = WGPU.wgpuDeviceCreateRenderPipeline(context.Device, &pipelineDescriptor);
-
-            context.Assets.AddPipeline(
-                shader, GpuPipelineVariant.Effect, layoutKey, pipeline, pipelineLayout, bindGroupLayout);
-
-            _pipeline = pipeline;
-            _pipelineLayout = pipelineLayout;
-            _bindGroupLayout = bindGroupLayout;
-            _cache = context.Assets;
-            _borrowedPipelineShader = shader;
-            _borrowedPipelineLayoutKey = layoutKey;
-
-            // ここから先は cache が所有する。失敗時 cleanup の対象から外す。
-            pipeline = null;
-            pipelineLayout = null;
-            bindGroupLayout = null;
-        }
-        finally
-        {
-            if (module is not null) WGPU.wgpuShaderModuleRelease(module);
-            if (pipeline is not null) WGPU.wgpuRenderPipelineRelease(pipeline);
-            if (pipelineLayout is not null) WGPU.wgpuPipelineLayoutRelease(pipelineLayout);
-            if (bindGroupLayout is not null) WGPU.wgpuBindGroupLayoutRelease(bindGroupLayout);
-            Marshal.FreeCoTaskMem(codePtr);
-            Marshal.FreeCoTaskMem(vsEntry);
-            Marshal.FreeCoTaskMem(fsEntry);
-        }
-    }
+    private static bool UsesHistory(ShaderAsset? shader)
+        => shader is not null && HistoryBindingRegex.IsMatch(SpriteRenderSupport.ReadShaderSource(shader));
 
     private void BuildIndexBuffer(in RenderContext context, int quadCount)
     {
@@ -418,63 +212,12 @@ public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderPar
         ulong size = (ulong)(_indexCount * sizeof(uint));
         var bufferDescriptor = new BufferDescriptor { Usage = BufferUsage.Index | BufferUsage.CopyDst, Size = size };
         _indexBuffer = WGPU.wgpuDeviceCreateBuffer(context.Device, &bufferDescriptor);
+        _pool = context.Resources;
         context.Resources.Track(this, () => { if (_indexBuffer is not null) { WGPU.wgpuBufferRelease(_indexBuffer); _indexBuffer = null; } });
         fixed (uint* p = indices)
         {
             WGPU.wgpuQueueWriteBuffer(context.Queue, _indexBuffer, 0, p, (nuint)size);
         }
-    }
-
-    private void BuildUniformAndBindGroup(in RenderContext context, TextureAsset?[] resolvedSlots)
-    {
-        var bufferDescriptor = new BufferDescriptor { Usage = BufferUsage.Uniform | BufferUsage.CopyDst, Size = UniformSize };
-        _uniformBuffer = WGPU.wgpuDeviceCreateBuffer(context.Device, &bufferDescriptor);
-        context.Resources.Track(this, () => { if (_uniformBuffer is not null) { WGPU.wgpuBufferRelease(_uniformBuffer); _uniformBuffer = null; } });
-
-        var paramBufferDescriptor = new BufferDescriptor { Usage = BufferUsage.Uniform | BufferUsage.CopyDst, Size = (ulong)ParamBufferSize };
-        _paramBuffer = WGPU.wgpuDeviceCreateBuffer(context.Device, &paramBufferDescriptor);
-        context.Resources.Track(this, () => { if (_paramBuffer is not null) { WGPU.wgpuBufferRelease(_paramBuffer); _paramBuffer = null; } });
-
-        if (_usesSimulationHistory)
-        {
-            var historyBufferDescriptor = new BufferDescriptor { Usage = BufferUsage.Storage | BufferUsage.CopyDst, Size = HistoryBufferSize };
-            _historyBuffer = WGPU.wgpuDeviceCreateBuffer(context.Device, &historyBufferDescriptor);
-            context.Resources.Track(this, () => { if (_historyBuffer is not null) { WGPU.wgpuBufferRelease(_historyBuffer); _historyBuffer = null; } });
-        }
-
-        ShaderTextureSlot[] slots = _resolvedShader?.TextureSlots ?? [];
-        _slotTextures = new Texture*[slots.Length];
-        _slotTextureViews = new TextureView*[slots.Length];
-
-        int fixedEntryCount = _usesSimulationHistory ? 4 : 3;
-        var entries = stackalloc BindGroupEntry[fixedEntryCount + slots.Length];
-        entries[0] = new BindGroupEntry { Binding = 0, Buffer = _uniformBuffer, Offset = 0, Size = UniformSize };
-        entries[1] = new BindGroupEntry { Binding = 2, Sampler = context.DefaultSampler };
-        entries[2] = new BindGroupEntry { Binding = 3, Buffer = _paramBuffer, Offset = 0, Size = (ulong)ParamBufferSize };
-        if (_usesSimulationHistory)
-            entries[3] = new BindGroupEntry { Binding = HistoryBinding, Buffer = _historyBuffer, Offset = 0, Size = HistoryBufferSize };
-        for (int i = 0; i < slots.Length; i++)
-        {
-            TextureView* slotView = context.DefaultTextureView;
-            if (i < resolvedSlots.Length && resolvedSlots[i] is { } slotTexture)
-            {
-                _slotTextures[i] = SpriteRenderSupport.CreateTexture(in context, slotTexture);
-                _slotTextureViews[i] = WGPU.wgpuTextureCreateView(_slotTextures[i], null);
-                slotView = _slotTextureViews[i];
-            }
-
-            entries[fixedEntryCount + i] = new BindGroupEntry { Binding = (uint)slots[i].Binding, TextureView = slotView };
-        }
-        context.Resources.Track(this, () =>
-        {
-            foreach (TextureView* view in _slotTextureViews) if (view is not null) WGPU.wgpuTextureViewRelease(view);
-            foreach (Texture* texture in _slotTextures) if (texture is not null) WGPU.wgpuTextureRelease(texture);
-            _slotTextureViews = [];
-            _slotTextures = [];
-        });
-        var bindGroupDescriptor = new BindGroupDescriptor { Layout = _bindGroupLayout, EntryCount = (uint)(fixedEntryCount + slots.Length), Entries = entries };
-        _bindGroup = WGPU.wgpuDeviceCreateBindGroup(context.Device, &bindGroupDescriptor);
-        context.Resources.Track(this, () => { if (_bindGroup is not null) { WGPU.wgpuBindGroupRelease(_bindGroup); _bindGroup = null; } });
     }
 
     private void UpdateHistory(float localTime, Matrix4x4 worldTransform)
@@ -525,7 +268,7 @@ public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderPar
         if (float.IsFinite(SimulationHistoryDuration) && SimulationHistoryDuration > 0f)
             return SimulationHistoryDuration;
 
-        ShaderParam[] definitions = _resolvedShader?.Params ?? [];
+        ShaderParam[] definitions = _vertexShader?.VertexParams ?? [];
         float[] values = Params ?? [];
         int valueOffset = 0;
         foreach (ShaderParam definition in definitions)
@@ -582,9 +325,9 @@ public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderPar
 
     private void UploadHistory(Queue* queue)
     {
-        if (_historyBuffer is null) return;
+        if (_binding.HistoryBuffer is null) return;
         fixed (float* history = _historyData)
-            WGPU.wgpuQueueWriteBuffer(queue, _historyBuffer, 0, history, HistoryBufferSize);
+            WGPU.wgpuQueueWriteBuffer(queue, _binding.HistoryBuffer, 0, history, HistoryBufferSize);
     }
 
     private void ResetHistoryState()
@@ -599,37 +342,22 @@ public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderPar
         _lastHistoryEmissionEnabled = false;
     }
 
-    private void ReleaseResources()
+    private void ReleaseIndexBuffer()
     {
         _pool?.ReleaseAll(this);
-        _globals.Release();
-
-        if (_borrowedPipelineShader is not null)
-            _cache?.ReleasePipeline(_borrowedPipelineShader, GpuPipelineVariant.Effect, _borrowedPipelineLayoutKey);
-
-        _borrowedPipelineShader = null;
-        _borrowedPipelineLayoutKey = 0;
-        _pipeline = null;
-        _pipelineLayout = null;
-        _bindGroupLayout = null;
         _indexCount = 0;
-        _realizedShader = null;
-        _realizedSlotTextures = [];
         _realizedQuadCount = -1;
-        _usesSimulationHistory = false;
-        _resourcesBuilt = false;
     }
 }
 
 public sealed partial class EffectComponent
 {
-    /// <summary>フィールド値が入るたびの参照の解決（シェーダの枠に合わせた <see cref="Textures"/> の枠まで）</summary>
+    /// <summary>フィールド値が入るたびの参照の解決（空のマテリアルは同梱の既定へ）</summary>
     public async ValueTask OnResolveAssetsAsync(IAssetResolver resolver)
     {
         await ResolveAssetFieldsAsync(resolver);
-        Textures ??= [];
-        if (_resolvedShader is not null)
-            Textures = ShaderParamsHost.ReconcileTextures(_resolvedShader.TextureSlots, Textures);
-        _resolvedSlotTextures = await ShaderParamsHost.ResolveTexturesAsync(Textures, resolver);
+        _resolvedMaterial ??= await resolver.ResolveAsync(new AssetReference<MaterialAsset>(BuiltinMaterials.Effect));
+        _builtinShader = await resolver.ResolveAsync(new AssetReference<ShaderAsset>(BuiltinShaders.Effect));
+        ApplyShaders();
     }
 }

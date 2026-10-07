@@ -43,8 +43,12 @@ public unsafe ref struct RenderContext
     /// <summary><see cref="RenderWorld.AdvanceTime"/> で進めた、この世界のアニメーション時刻（秒）</summary>
     public float Time;
 
-    /// <summary>シェーダが <c>group(1)</c> で名前で拾う、この世界の共有値</summary>
-    public ShaderGlobals Globals;
+    /// <summary><c>group(1)</c>（世界で共有する値）のレイアウト。自前でパイプラインを組むコンポーネントは、これをパイプラインレイアウトの 1 番目へ置く</summary>
+    /// <remarks>bind group はレンダラーがパスの頭で結ぶ。</remarks>
+    public BindGroupLayout* GlobalsLayout;
+
+    /// <summary><c>group(3)</c>（メインテクスチャとサンプラー）のレイアウト</summary>
+    public BindGroupLayout* MainTextureLayout;
 
     /// <summary>描画先（swapchain）のテクスチャフォーマット</summary>
     public TextureFormat TargetFormat;

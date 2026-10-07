@@ -16,15 +16,6 @@
     }
 }
 
-@if (_textures.Length > 0)
-{
-    <div class="inspector-section">Textures</div>
-    @foreach (FieldViewModel field in _textures)
-    {
-        <FieldEditor @key="field" Field="field" />
-    }
-}
-
 @code {
     /// <summary>このインスペクタが受け持つコンポーネントの目印</summary>
     internal const string ShaderParamsHostTypeId = "EmptyEngine.WebGpu.IShaderParamsHost";
@@ -32,23 +23,13 @@
     private const string MeshComponentTypeId = "EmptyEngine.WebGpu.MeshComponent";
     private const string SpriteComponentTypeId = "EmptyEngine.WebGpu.SpriteComponent";
     private const string LineRendererComponentTypeId = "EmptyEngine.WebGpu.LineRendererComponent";
-    private const string ShaderAssetTypeId = "EmptyEngine.WebGpu.ShaderAsset";
+    private const string EffectComponentTypeId = "EmptyEngine.WebGpu.EffectComponent";
+    private const string MaterialAssetTypeId = "EmptyEngine.WebGpu.MaterialAsset";
 
-    private const string ParamsField = "Params";
-    private const string TexturesField = "Textures";
-    private const string TextureSlotsField = "TextureSlots";
-    private const string ShaderField = "Shader";
-
-    private static readonly string[] ColorChannels = ["R", "G", "B", "A"];
-
-    private static readonly FieldTypeInfo ColorType = new("EmptyEngine.Graphics.Color", FieldKind.Map)
-    {
-        Members = ColorChannels.ToDictionary(key => key, _ => new FieldTypeInfo("System.Single", FieldKind.Float32)),
-        ColorChannels = ColorChannels,
-    };
+    private const string MaterialField = "Material";
+    private const string VertexParamsField = "VertexParams";
 
     private FieldViewModel[] _parameters = [];
-    private FieldViewModel[] _textures = [];
 
     protected override void OnAuthoringBound()
     {
@@ -60,149 +41,48 @@
     protected override void OnAuthoringRefreshed() => Rebuild();
 
     private void Rebuild() =>
-        (_parameters, _textures) = BuildFields(Authoring, reference => Catalog.GetAsset(reference.Value));
+        _parameters = BuildParams(Authoring, reference => Catalog.GetAsset(reference.Value));
 
     /// <summary>シェーダ由来ではない、そのまま並べる編集欄</summary>
     internal static IEnumerable<FieldViewModel> PlainFields(AuthoringObjectViewModel component) =>
-        component.Fields.Snapshot.Where(field => field.Name is not (ParamsField or TexturesField));
+        component.Fields.Snapshot.Where(field => field.Name is not ShaderFieldEditors.ParamsField);
 
-    /// <summary>その時点のシェーダが宣言するパラメータとテクスチャスロットの編集欄</summary>
-    /// <remarks>編集対象が差し替わった後も <paramref name="component"/> の現在の値へ書き込む。</remarks>
-    internal static (FieldViewModel[] Parameters, FieldViewModel[] Textures) BuildFields(
+    /// <summary>その時点の頂点シェーダが宣言するパラメータの編集欄</summary>
+    /// <remarks>
+    /// 頂点シェーダは実行時と同じ順で決める：コンポーネントの <c>Shader</c>、マテリアルのシェーダ（頂点を持てば）、同梱の既定。
+    /// 編集対象が差し替わった後も <paramref name="component"/> の現在の値へ書き込む。
+    /// </remarks>
+    internal static FieldViewModel[] BuildParams(
         AuthoringObjectViewModel component,
         Func<AssetKey, AuthoringObject?> tryGetAssetValue)
     {
-        string shaderKey = component.Root.Get(ShaderField)?.AssetKey ?? string.Empty;
-        AuthoringObject? shader = ResolveShader(shaderKey, tryGetAssetValue)
-            ?? ResolveShader(BuiltinShaderFor(component.TypeName), tryGetAssetValue);
+        AuthoringObject? shader = VertexCapable(ShaderFieldEditors.ResolveShader(
+                component.Root.Get(ShaderFieldEditors.ShaderField)?.AssetKey, tryGetAssetValue))
+            ?? VertexCapable(MaterialShader(component.Root.Get(MaterialField)?.AssetKey, tryGetAssetValue))
+            ?? ShaderFieldEditors.ResolveShader(BuiltinShaderFor(component.TypeName), tryGetAssetValue);
 
-        ShaderParam[] paramDefs = ReadParams(shader);
-        ShaderTextureSlot[] slots = shader is not null
-            ? ShaderSlotsFor(component.TypeName, ReadTextureSlots(shader))
-            : [];
-
-        return (BuildParams(component, paramDefs), BuildTextureSlots(component, slots));
+        return ShaderFieldEditors.BuildParams(component, ShaderFieldEditors.ReadParams(shader, VertexParamsField));
     }
 
-    /// <summary>シェーダ未指定のコンポーネントが実行時に使う既定シェーダ</summary>
+    private static AuthoringObject? VertexCapable(AuthoringObject? shader) =>
+        shader is not null && ShaderFieldEditors.HasVertex(shader) ? shader : null;
+
+    /// <summary>マテリアルが指すシェーダ（マテリアルが空なら無し）</summary>
+    private static AuthoringObject? MaterialShader(string? materialKey, Func<AssetKey, AuthoringObject?> tryGetAssetValue)
+    {
+        if (string.IsNullOrEmpty(materialKey)) return null;
+        if (tryGetAssetValue(new AssetKey(materialKey)) is not { TypeName: MaterialAssetTypeId } material) return null;
+
+        return ShaderFieldEditors.ResolveShader(material.Data.Get(ShaderFieldEditors.ShaderField)?.ReferenceKey, tryGetAssetValue);
+    }
+
+    /// <summary>コンポーネント種別ごとの同梱の頂点シェーダ</summary>
     private static string BuiltinShaderFor(string typeName) => typeName switch
     {
         SpriteComponentTypeId => BuiltinShaders.Sprite,
         MeshComponentTypeId => BuiltinShaders.Mesh,
         LineRendererComponentTypeId => BuiltinShaders.Line,
+        EffectComponentTypeId => BuiltinShaders.Effect,
         _ => string.Empty,
     };
-
-    private static ShaderTextureSlot[] ShaderSlotsFor(string typeName, ShaderTextureSlot[] slots) =>
-        typeName == SpriteComponentTypeId ? slots.Where(slot => slot.Binding != 1).ToArray() : slots;
-
-    private static FieldViewModel[] BuildParams(AuthoringObjectViewModel component, ShaderParam[] defs)
-    {
-        if (defs.Length == 0) return [];
-        float[] current = CurrentParams(component, defs);
-        return defs.Select((definition, index) =>
-        {
-            int offset = ShaderParamsHost.ValueOffset(defs, index);
-            bool color = definition.Kind == ShaderParamKind.Color;
-            var value = new FieldValue { Real = current[offset] };
-            if (color)
-                for (int channel = 0; channel < ColorChannels.Length; channel++)
-                    value.Add(ColorChannels[channel], new FieldValue { Real = current[offset + channel] });
-            FieldViewModel? editor = null;
-            editor = new FieldViewModel(component, definition.Name,
-                color ? ColorType : new FieldTypeInfo("float", FieldKind.Float32), value,
-                _ =>
-                {
-                    float[] values = CurrentParams(component, defs);
-                    for (int channel = 0; channel < (color ? 4 : 1); channel++)
-                        values[offset + channel] = (float)(color ? editor!.Children[channel].NumericValue : editor!.NumericValue);
-                    var snapshot = new FieldValue();
-                    snapshot.Items.AddRange(values.Select(number => new FieldValue { Real = number }));
-                    component.Edit($"param.{index}", () => component.Root.Get(ParamsField)!.Replace(snapshot));
-                });
-            return editor;
-        }).ToArray();
-    }
-
-    private static float[] CurrentParams(AuthoringObjectViewModel component, ShaderParam[] defs) => ShaderParamsHost.Reconcile(defs,
-        component.Root.Get(ParamsField)?.Children.Select(item => (float)item.NumericValue).ToArray() ?? []);
-
-    private static FieldViewModel[] BuildTextureSlots(AuthoringObjectViewModel component, ShaderTextureSlot[] slots) =>
-        slots.Select((slot, index) =>
-        {
-            FieldValue? initial = component.Root.Get(TexturesField)?.Children.ElementAtOrDefault(index)?.Capture();
-            FieldViewModel? editor = null;
-            editor = new FieldViewModel(component, slot.Name,
-                new FieldTypeInfo("EmptyEngine.Graphics.TextureAsset", FieldKind.AssetReference), initial,
-                _ =>
-                {
-                    var snapshot = new FieldValue();
-                    for (int i = 0; i < slots.Length; i++)
-                        snapshot.Items.Add(i == index ? editor!.Capture()
-                            : component.Root.Get(TexturesField)?.Children.ElementAtOrDefault(i)?.Capture() ?? EmptyAssetRef());
-                    component.Edit($"texture.{index}", () => component.Root.Get(TexturesField)!.Replace(snapshot));
-                });
-            return editor;
-        }).ToArray();
-
-    private static AuthoringObject? ResolveShader(string shaderKey, Func<AssetKey, AuthoringObject?> tryGetAssetValue)
-    {
-        if (string.IsNullOrEmpty(shaderKey)) return null;
-
-        // Use persisted authoring data so cached reloads work without an importer instance.
-        return tryGetAssetValue(new AssetKey(shaderKey)) is { TypeName: ShaderAssetTypeId } shader ? shader : null;
-    }
-
-    private static ShaderParam[] ReadParams(AuthoringObject? shader)
-    {
-        if (shader?.Data.Get(ParamsField) is not { IsNull: false } array) return [];
-
-        var result = new List<ShaderParam>(array.Items.Count);
-        foreach (FieldValue item in array.Items)
-        {
-            if (item.IsNull) continue;
-            result.Add(new ShaderParam
-            {
-                Name = ReadString(item, "Name"),
-                Default = (float)ReadNumber(item, "Default"),
-                Kind = (ShaderParamKind)(item.Get("Kind")?.Integer ?? 0),
-                DefaultG = (float)ReadNumber(item, "DefaultG"),
-                DefaultB = (float)ReadNumber(item, "DefaultB"),
-                DefaultA = ReadOptionalNumber(item, "DefaultA", 1f),
-            });
-        }
-
-        return result.ToArray();
-    }
-
-    private static ShaderTextureSlot[] ReadTextureSlots(AuthoringObject shader)
-    {
-        if (shader.Data.Get(TextureSlotsField) is not { IsNull: false } array) return [];
-
-        var result = new List<ShaderTextureSlot>(array.Items.Count);
-        foreach (FieldValue item in array.Items)
-        {
-            if (item.IsNull) continue;
-            result.Add(new ShaderTextureSlot
-            {
-                Name = ReadString(item, "Name"),
-                Binding = (int)(item.Get("Binding")?.Integer ?? 0),
-            });
-        }
-
-        return result.ToArray();
-    }
-
-    private static string ReadString(FieldValue map, string key) =>
-        map.Get(key) is { IsNull: false } scalar
-            ? scalar.Text ?? string.Empty
-            : string.Empty;
-
-    private static double ReadNumber(FieldValue map, string key) =>
-        map.Get(key)?.Real ?? 0d;
-
-    private static float ReadOptionalNumber(FieldValue map, string key, float fallback) =>
-        map.Get(key) is { IsNull: false } scalar ? (float)scalar.Real : fallback;
-
-    private static FieldValue EmptyAssetRef() => new() { Text = string.Empty };
 }

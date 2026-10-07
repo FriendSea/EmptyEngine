@@ -3,23 +3,17 @@ using EmptyEngine.Graphics;
 
 namespace EmptyEngine.WebGpu;
 
-/// <summary>カスタムシェーダとそのパラメータを持つコンポーネントの契約</summary>
+/// <summary>マテリアルで描き、頂点シェーダとそのパラメータを自分で持てるコンポーネントの契約</summary>
 public interface IShaderParamsHost
 {
-    /// <summary>描画に使う WGSL シェーダ（<c>.wgsl</c>）への参照</summary>
+    /// <summary>頂点シェーダに使う WGSL シェーダ（<c>.wgsl</c>）への参照。空ならマテリアルのシェーダ、それも頂点を持たなければ同梱のものを使う</summary>
     AssetReference<ShaderAsset> Shader { get; }
 
-    /// <summary>シェーダのユーザ定義パラメータの値</summary>
+    /// <summary>頂点シェーダが宣言する <c>group(0) binding(3)</c> のパラメータの値</summary>
     float[] Params { get; set; }
 
-    /// <summary>シェーダの追加テクスチャスロットへ貼るテクスチャ参照</summary>
-    AssetReference<TextureAsset>[] Textures { get; set; }
-
-    /// <summary>現在解決済みのシェーダ。</summary>
-    ShaderAsset? ResolvedShader { get; }
-
-    /// <summary>このホストの有効テクスチャスロット</summary>
-    ShaderTextureSlot[] ResolveTextureSlots(ShaderAsset? resolvedShader) => resolvedShader?.TextureSlots ?? [];
+    /// <summary>描画に使うマテリアルへの参照。空なら同梱の既定マテリアルを使う</summary>
+    AssetReference<MaterialAsset> Material { get; }
 }
 
 /// <summary>シェーダ宣言に合わせてパラメータ配列を調整する</summary>

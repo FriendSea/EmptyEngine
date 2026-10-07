@@ -1,0 +1,12 @@
+{
+  "TypeName": "EmptyEngine.WebGpu.MaterialAsset",
+  "Data": {
+    "Shader": "d73a34965e56402c81ae33d70b969657",
+    "Blend": 1,
+    "DepthWrite": false,
+    "DepthCompare": 0,
+    "Queue": 3000,
+    "Params": [],
+    "Textures": []
+  }
+}
