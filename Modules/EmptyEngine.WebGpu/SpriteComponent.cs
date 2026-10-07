@@ -33,6 +33,10 @@ public sealed unsafe partial class SpriteComponent : ISpriteRenderer, IShaderPar
     private ShaderAsset? _builtinShader;
     private ShaderAsset? _vertexShader;
     private TextureAsset? _resolvedTexture;
+
+    /// <summary>描画に使うメインテクスチャ（スプライトが無ければマテリアルのもの）</summary>
+    /// <remarks>大きさはスプライトのテクスチャだけから決まり、マテリアルのテクスチャでは変わらない。</remarks>
+    private TextureAsset? EffectiveMainTexture => _resolvedTexture ?? _resolvedMaterial?.ResolvedMainTexture;
     private Rect _region = Rect.Full;
     private Vector2 _pivot = new(0.5f, 0.5f);
     private float _scale = 1f;
@@ -144,11 +148,11 @@ public sealed unsafe partial class SpriteComponent : ISpriteRenderer, IShaderPar
 
     public void Render(in RenderContext context)
     {
-        if (!_binding.Matches(_vertexShader, _resolvedMaterial, _resolvedTexture, Params?.Length ?? 0))
+        if (!_binding.Matches(_vertexShader, _resolvedMaterial, EffectiveMainTexture, Params?.Length ?? 0))
         {
             _binding.Build(
                 in context, MaterialVertexKind.Quad, UniformSize, _vertexShader, _resolvedMaterial,
-                _resolvedTexture, context.DefaultSampler, Params?.Length ?? 0);
+                EffectiveMainTexture, context.DefaultSampler, Params?.Length ?? 0);
         }
 
         if (!_binding.IsReady) return;

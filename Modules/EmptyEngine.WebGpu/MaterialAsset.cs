@@ -4,7 +4,7 @@ using EmptyEngine.ObjectModel;
 
 namespace EmptyEngine.WebGpu;
 
-/// <summary>フラグメントシェーダと、その描画状態・パラメータ・追加テクスチャの組</summary>
+/// <summary>フラグメントシェーダと、その描画状態・パラメータ・テクスチャの組</summary>
 /// <remarks>
 /// <see cref="Shader"/> は <c>fs_main</c> を必ず持つ。<c>vs_main</c> も持っていれば、コンポーネントが
 /// 自分の <c>Shader</c> を指定していないときの頂点シェーダになる。
@@ -27,6 +27,9 @@ public sealed class MaterialAsset : IAssetResolutionHook
     /// <summary>描画キュー番号（<see cref="ShaderRenderQueue"/> が名前付きの値を持つ）</summary>
     public int Queue = ShaderRenderQueue.Geometry;
 
+    /// <summary><c>group(3)</c> のメインテクスチャ（コンポーネントが自分のものを持てば、そちらが使われる）</summary>
+    public AssetReference<TextureAsset> MainTexture = new();
+
     /// <summary><c>group(2) binding(0)</c> のパラメータの値</summary>
     public float[] Params = [];
 
@@ -34,15 +37,19 @@ public sealed class MaterialAsset : IAssetResolutionHook
     public AssetReference<TextureAsset>[] Textures = [];
 
     private ShaderAsset? _resolvedShader;
+    private TextureAsset? _resolvedMainTexture;
     private TextureAsset?[] _resolvedTextures = [];
 
     /// <summary><see cref="Shader"/> を解決した実体</summary>
     public ShaderAsset? ResolvedShader => _resolvedShader;
 
+    /// <summary><see cref="MainTexture"/> を解決した実体</summary>
+    public TextureAsset? ResolvedMainTexture => _resolvedMainTexture;
+
     /// <summary><see cref="Textures"/> を解決した実体（空の枠は <c>null</c>）</summary>
     public IReadOnlyList<TextureAsset?> ResolvedTextures => _resolvedTextures;
 
-    /// <summary>実体化直後の、シェーダと追加テクスチャの解決（値の枠はシェーダの宣言に合わせる）</summary>
+    /// <summary>実体化直後の、シェーダとテクスチャの解決（値の枠はシェーダの宣言に合わせる）</summary>
     public async ValueTask OnResolveAssetsAsync(IAssetResolver resolver)
     {
         _resolvedShader = await resolver.ResolveAsync(Shader);
@@ -52,6 +59,7 @@ public sealed class MaterialAsset : IAssetResolutionHook
             Textures = ShaderParamsHost.ReconcileTextures(_resolvedShader.TextureSlots, Textures);
         }
 
+        _resolvedMainTexture = await resolver.ResolveAsync(MainTexture);
         Textures ??= [];
         _resolvedTextures = await ShaderParamsHost.ResolveTexturesAsync(Textures, resolver);
     }

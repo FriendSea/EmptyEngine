@@ -36,6 +36,9 @@ public sealed unsafe partial class MeshComponent : ISpriteRenderer, IShaderParam
     [ResolveAsset("MainTexture")]
     private TextureAsset? _resolvedMainTexture;
 
+    /// <summary>描画に使うメインテクスチャ（自分の指定が無ければマテリアルのもの）</summary>
+    private TextureAsset? EffectiveMainTexture => _resolvedMainTexture ?? _resolvedMaterial?.ResolvedMainTexture;
+
     private ShaderAsset? _builtinShader;
     private ShaderAsset? _vertexShader;
     private MeshAsset? _realizedMesh;
@@ -106,11 +109,11 @@ public sealed unsafe partial class MeshComponent : ISpriteRenderer, IShaderParam
         MeshAsset? mesh = _realizedMesh;
         if (mesh is null || _vertexBuffer is null) return;
 
-        if (!_binding.Matches(_vertexShader, _resolvedMaterial, _resolvedMainTexture, Params?.Length ?? 0))
+        if (!_binding.Matches(_vertexShader, _resolvedMaterial, EffectiveMainTexture, Params?.Length ?? 0))
         {
             _binding.Build(
                 in context, MaterialVertexKind.Mesh, UniformSize, _vertexShader, _resolvedMaterial,
-                _resolvedMainTexture, context.RepeatSampler, Params?.Length ?? 0);
+                EffectiveMainTexture, context.RepeatSampler, Params?.Length ?? 0);
         }
 
         if (!_binding.IsReady) return;

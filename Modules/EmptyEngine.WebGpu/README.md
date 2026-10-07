@@ -13,7 +13,7 @@ presenter.RenderFrame(delta, renderWorld);
 
 ## Materials and shaders
 
-Sprite, Mesh, LineRenderer and Effect components draw with a `MaterialAsset`. The material names a WGSL shader that must define `fs_main`, and owns the render state (blend, depth write, depth compare, queue), the fragment-side parameter values and the extra textures. A component with no material uses the bundled default for its kind.
+Sprite, Mesh, LineRenderer and Effect components draw with a `MaterialAsset`. The material names a WGSL shader that must define `fs_main`, and owns the render state (blend, depth write, depth compare, queue), the fragment-side parameter values, the main texture and the extra textures. A component with no material uses the bundled default for its kind.
 
 The vertex shader is chosen in this order. A `vs_main` whose vertex inputs do not match the component is skipped with a warning.
 
@@ -28,7 +28,7 @@ Bind groups:
 | 0 | binding 0: component uniform; binding 3: `Params` struct whose values live on the component; binding 31: Effect emitter history | vertex, fragment | component instance |
 | 1 | bindings 0–7: world-shared values, one variable per binding (`f32` or `vec2`/`vec3`/`vec4<f32>`), set through `RenderWorld.Globals` by slot number. Unset slots read 0 | vertex, fragment | renderer |
 | 2 | binding 0: `Params` struct whose values live on the material; binding 1: sampler; bindings 2+: extra `texture_2d<f32>` | fragment | material |
-| 3 | binding 0: main texture; binding 1: its sampler | fragment | texture and sampler pair |
+| 3 | binding 0: main texture (the component's own if it has one, otherwise the material's); binding 1: its sampler | fragment | texture and sampler pair |
 
 A `Params` struct holds `f32` and `vec4<f32>` members; a trailing `// default <value>` comment on a member sets its initial value.
 

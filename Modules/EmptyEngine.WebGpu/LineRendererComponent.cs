@@ -33,6 +33,9 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
     [ResolveAsset("MainTexture")]
     private TextureAsset? _resolvedMainTexture;
 
+    /// <summary>描画に使うメインテクスチャ（自分の指定が無ければマテリアルのもの）</summary>
+    private TextureAsset? EffectiveMainTexture => _resolvedMainTexture ?? _resolvedMaterial?.ResolvedMainTexture;
+
     private ShaderAsset? _builtinShader;
     private ShaderAsset? _vertexShader;
     private GpuResourcePool? _pool;
@@ -132,11 +135,11 @@ public sealed unsafe partial class LineRendererComponent : ISpriteRenderer, ISha
         Vector3[] points = Points ?? [];
         if (points.Length < 2 || Width <= 0f) return;
 
-        if (!_binding.Matches(_vertexShader, _resolvedMaterial, _resolvedMainTexture, Params?.Length ?? 0))
+        if (!_binding.Matches(_vertexShader, _resolvedMaterial, EffectiveMainTexture, Params?.Length ?? 0))
         {
             _binding.Build(
                 in context, MaterialVertexKind.Line, UniformSize, _vertexShader, _resolvedMaterial,
-                _resolvedMainTexture, context.DefaultSampler, Params?.Length ?? 0);
+                EffectiveMainTexture, context.DefaultSampler, Params?.Length ?? 0);
         }
 
         if (!_binding.IsReady) return;

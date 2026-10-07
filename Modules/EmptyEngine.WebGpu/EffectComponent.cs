@@ -43,6 +43,9 @@ public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderPar
     [ResolveAsset("MainTexture")]
     private TextureAsset? _resolvedMainTexture;
 
+    /// <summary>描画に使うメインテクスチャ（自分の指定が無ければマテリアルのもの）</summary>
+    private TextureAsset? EffectiveMainTexture => _resolvedMainTexture ?? _resolvedMaterial?.ResolvedMainTexture;
+
     private ShaderAsset? _builtinShader;
     private ShaderAsset? _vertexShader;
     private int _realizedQuadCount = -1;
@@ -140,13 +143,13 @@ public sealed unsafe partial class EffectComponent : ISpriteRenderer, IShaderPar
     {
         if (QuadCount <= 0) return;
 
-        if (!_binding.Matches(_vertexShader, _resolvedMaterial, _resolvedMainTexture, Params?.Length ?? 0))
+        if (!_binding.Matches(_vertexShader, _resolvedMaterial, EffectiveMainTexture, Params?.Length ?? 0))
         {
             // 履歴を読むのは頂点・フラグメントのどちらでもよいので、両方のソースを見る。
             _usesSimulationHistory = UsesHistory(_vertexShader) || UsesHistory(_resolvedMaterial?.ResolvedShader);
             _binding.Build(
                 in context, MaterialVertexKind.Effect, UniformSize, _vertexShader, _resolvedMaterial,
-                _resolvedMainTexture, context.DefaultSampler, Params?.Length ?? 0, _usesSimulationHistory);
+                EffectiveMainTexture, context.DefaultSampler, Params?.Length ?? 0, _usesSimulationHistory);
         }
 
         if (!_binding.IsReady) return;

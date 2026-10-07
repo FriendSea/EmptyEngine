@@ -220,6 +220,48 @@ public sealed class ShaderParamsInspectorTests : IDisposable
         Assert.Equal("texture-key", Assert.IsType<FieldValue>(data.Get("Textures")).Items[0].ReferenceKey);
     }
 
+    /// <summary>プレビューへ渡す内容は、シェーダの本文・描画状態・16 バイト単位に詰めた値・スロットごとのテクスチャ</summary>
+    [Fact]
+    public async Task Preview_spec_carries_the_shader_source_render_state_params_and_texture_slots()
+    {
+        (AssetCatalog catalog, _, string materialKey) = await ProjectWithMaterialAsync(FullShader);
+        AuthoringObjectViewModel material = ViewModel(Assert.IsType<AuthoringObject>(catalog.GetAsset(materialKey)));
+        (FieldViewModel[] parameters, FieldViewModel[] textures) =
+            MaterialInspector.BuildFields(material, key => catalog.GetAsset(key.Value));
+        parameters[0].NumericValue = 0.25;
+        textures[0].AssignAssetReference(new AssetKey("texture-key"));
+
+        MaterialPreviewSpec spec = MaterialPreviewSpec.Build(material, key => catalog.GetAsset(key.Value));
+
+        Assert.Contains("fn fs_main", spec.Fragment);
+        Assert.Equal(nameof(MaterialBlend.Opaque), spec.Blend);
+        Assert.True(spec.DepthWrite);
+        Assert.Equal(nameof(MaterialDepthCompare.LessEqual), spec.DepthCompare);
+        Assert.Equal([0.25f, 0f, 0f, 0f], spec.Params);
+        Assert.Equal([new MaterialPreviewTexture(2, "texture-key")], spec.Textures);
+        // コンポーネント側は scale（既定 1）と tint（既定 #ff8040ff）。vec4 は 16 バイト境界へ寄る。
+        Assert.Equal(8, spec.ComponentParams.Length);
+        Assert.Equal(1f, spec.ComponentParams[0]);
+        Assert.Equal(1f, spec.ComponentParams[4]);
+        Assert.True(spec.OwnVertex);
+        Assert.Equal(string.Empty, spec.MainTexture);
+    }
+
+    /// <summary>フラグメントを持たないシェーダのマテリアルは、描けないものとして本文を渡さない</summary>
+    [Fact]
+    public async Task Preview_spec_has_no_source_for_a_shader_without_a_fragment_stage()
+    {
+        (AssetCatalog catalog, _, string materialKey) = await ProjectWithMaterialAsync("""
+            @vertex
+            fn vs_main(@location(0) position : vec3<f32>) -> @builtin(position) vec4<f32> {
+                return vec4<f32>(position, 1.0);
+            }
+            """);
+        AuthoringObjectViewModel material = ViewModel(Assert.IsType<AuthoringObject>(catalog.GetAsset(materialKey)));
+
+        Assert.Null(MaterialPreviewSpec.Build(material, key => catalog.GetAsset(key.Value)).Fragment);
+    }
+
     /// <summary>同梱の既定の頂点シェーダと既定マテリアルは、コードが持つキーで取り込まれ、同じキーが配布の起点として宣言されている</summary>
     [Fact]
     public async Task Shipped_assets_import_under_the_keys_the_components_resolve()
