@@ -65,6 +65,12 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private PipelineLayout* _blitPipelineLayout;
     private BindGroupLayout* _blitLayout;
     private BindGroup* _blitBindGroup;
+    private BindGroupLayout* _globalsLayout;
+    private BindGroup* _globalsBindGroup;
+    private readonly WgpuBuffer*[] _globalsBuffers = new WgpuBuffer*[ShaderGlobals.SlotCount];
+    private ShaderGlobals? _writtenGlobals;
+    private int _writtenGlobalsVersion = -1;
+    private BindGroupLayout* _mainTextureLayout;
     private readonly uint _quadVertexCount = (uint)(QuadVertices.Length / 4);
     private readonly List<RenderEntry> _opaqueEntries = [];
     private readonly List<RenderEntry> _transparentEntries = [];
@@ -81,6 +87,70 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _format = format;
         CreateQuadVertexBuffer();
         CreateDefaultTextureAndSampler();
+        CreateSharedLayouts();
+    }
+
+    /// <summary>group(1)（世界で共有する値）の buffer・bind group と、group(3)（メインテクスチャ）のレイアウトの生成</summary>
+    private void CreateSharedLayouts()
+    {
+        const int SlotSize = 16;
+        var globalLayoutEntries = stackalloc BindGroupLayoutEntry[ShaderGlobals.SlotCount];
+        var globalEntries = stackalloc BindGroupEntry[ShaderGlobals.SlotCount];
+        for (int slot = 0; slot < ShaderGlobals.SlotCount; slot++)
+        {
+            globalLayoutEntries[slot] = new BindGroupLayoutEntry
+            {
+                Binding = (uint)slot,
+                Visibility = ShaderStage.Vertex | ShaderStage.Fragment,
+                Buffer = new BufferBindingLayout { Type = BufferBindingType.Uniform, MinBindingSize = SlotSize },
+            };
+
+            var bufferDescriptor = new BufferDescriptor { Usage = BufferUsage.Uniform | BufferUsage.CopyDst, Size = SlotSize };
+            _globalsBuffers[slot] = WGPU.wgpuDeviceCreateBuffer(_device, &bufferDescriptor);
+            globalEntries[slot] = new BindGroupEntry { Binding = (uint)slot, Buffer = _globalsBuffers[slot], Offset = 0, Size = SlotSize };
+        }
+
+        var globalsLayoutDescriptor = new BindGroupLayoutDescriptor { EntryCount = ShaderGlobals.SlotCount, Entries = globalLayoutEntries };
+        _globalsLayout = WGPU.wgpuDeviceCreateBindGroupLayout(_device, &globalsLayoutDescriptor);
+        var globalsDescriptor = new BindGroupDescriptor { Layout = _globalsLayout, EntryCount = ShaderGlobals.SlotCount, Entries = globalEntries };
+        _globalsBindGroup = WGPU.wgpuDeviceCreateBindGroup(_device, &globalsDescriptor);
+
+        var mainEntries = stackalloc BindGroupLayoutEntry[2];
+        mainEntries[0] = new BindGroupLayoutEntry
+        {
+            Binding = MaterialRenderSupport.MainTextureBinding,
+            Visibility = ShaderStage.Fragment,
+            Texture = new TextureBindingLayout
+            {
+                SampleType = TextureSampleType.Float,
+                ViewDimension = TextureViewDimension.Dimension2D,
+                Multisampled = 0,
+            },
+        };
+        mainEntries[1] = new BindGroupLayoutEntry
+        {
+            Binding = MaterialRenderSupport.MainSamplerBinding,
+            Visibility = ShaderStage.Fragment,
+            Sampler = new SamplerBindingLayout { Type = SamplerBindingType.Filtering },
+        };
+        var mainDescriptor = new BindGroupLayoutDescriptor { EntryCount = 2, Entries = mainEntries };
+        _mainTextureLayout = WGPU.wgpuDeviceCreateBindGroupLayout(_device, &mainDescriptor);
+    }
+
+    /// <summary>世界で共有する値の、変わっていた場合の書き直し</summary>
+    private void UploadGlobals(ShaderGlobals globals)
+    {
+        if (ReferenceEquals(_writtenGlobals, globals) && _writtenGlobalsVersion == globals.Version) return;
+
+        ReadOnlySpan<Vector4> values = globals.Values;
+        fixed (Vector4* p = values)
+        {
+            for (int slot = 0; slot < ShaderGlobals.SlotCount; slot++)
+                WGPU.wgpuQueueWriteBuffer(_queue, _globalsBuffers[slot], 0, p + slot, (nuint)sizeof(Vector4));
+        }
+
+        _writtenGlobals = globals;
+        _writtenGlobalsVersion = globals.Version;
     }
 
     private void CreateQuadVertexBuffer()
@@ -199,7 +269,10 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             DepthStencilAttachment = &depthAttachment,
         };
 
+        UploadGlobals(world.Globals);
+
         RenderPassEncoder* pass = WGPU.wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDescriptor);
+        WGPU.wgpuRenderPassEncoderSetBindGroup(pass, 1, _globalsBindGroup, 0, null);
 
         var context = new RenderContext
         {
@@ -218,7 +291,8 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             ViewMatrix = viewMatrix,
             ProjectionMatrix = projectionMatrix,
             Time = (float)world.Time,
-            Globals = world.Globals,
+            GlobalsLayout = _globalsLayout,
+            MainTextureLayout = _mainTextureLayout,
             TargetFormat = _format,
             DepthFormat = DepthFormat,
         };
@@ -274,6 +348,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
                 WGPU.wgpuRenderPassEncoderRelease(pass);
                 colorAttachment.LoadOp = LoadOp.Load;
                 pass = WGPU.wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDescriptor);
+                WGPU.wgpuRenderPassEncoderSetBindGroup(pass, 1, _globalsBindGroup, 0, null);
                 context.Pass = pass;
                 previousCanvas = entry.Canvas;
                 previousLayer = entry.Layer;
@@ -327,6 +402,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         LoadOp resumed = depth->DepthLoadOp;
         depth->DepthLoadOp = LoadOp.Load;
         pass = WGPU.wgpuCommandEncoderBeginRenderPass(encoder, descriptor);
+        WGPU.wgpuRenderPassEncoderSetBindGroup(pass, 1, _globalsBindGroup, 0, null);
         depth->DepthLoadOp = resumed;
         color->LoadOp = LoadOp.Load;
 
@@ -515,5 +591,10 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         // 取りこぼされたコンポーネント側リソース（OnDestroy を通らなかった分）の掃除
         _resources.Dispose();
         _assets.Dispose();
+
+        if (_globalsBindGroup is not null) WGPU.wgpuBindGroupRelease(_globalsBindGroup);
+        foreach (WgpuBuffer* buffer in _globalsBuffers) if (buffer is not null) WGPU.wgpuBufferRelease(buffer);
+        if (_globalsLayout is not null) WGPU.wgpuBindGroupLayoutRelease(_globalsLayout);
+        if (_mainTextureLayout is not null) WGPU.wgpuBindGroupLayoutRelease(_mainTextureLayout);
     }
 }

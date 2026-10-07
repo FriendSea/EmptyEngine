@@ -4,109 +4,50 @@ using EmptyEngine.ObjectModel;
 namespace EmptyEngine.WebGpu;
 
 /// <summary>インポート済みシェーダ</summary>
-/// <remarks>描画状態には各プロパティの値を使う。<see cref="Source"/> はシェーダモジュールのソースを保持する。</remarks>
+/// <remarks>描画状態は持たない（<see cref="MaterialAsset"/> が持つ）。ここにあるのは WGSL が宣言するインターフェースだけ。</remarks>
 [Asset]
 public sealed class ShaderAsset
 {
     /// <summary>WGSL ソース本体（UTF-8 バイト列）</summary>
     public IAssetBinary Source = null!;
 
-    /// <summary>シェーダが公開するユーザ定義パラメータの記述</summary>
-    public ShaderParam[] Params { get; set; } = [];
+    /// <summary><c>vs_main</c> を持つか</summary>
+    public bool HasVertex { get; set; }
 
-    /// <summary>シェーダが公開する追加テクスチャスロットの記述</summary>
+    /// <summary><c>fs_main</c> を持つか</summary>
+    public bool HasFragment { get; set; }
+
+    /// <summary><c>vs_main</c> が受け取る頂点属性</summary>
+    public ShaderVertexInput[] VertexInputs { get; set; } = [];
+
+    /// <summary><c>group(0) binding(3)</c> のパラメータの記述（値はコンポーネントが持つ）</summary>
+    public ShaderParam[] VertexParams { get; set; } = [];
+
+    /// <summary><c>group(2) binding(0)</c> のパラメータの記述（値はマテリアルが持つ）</summary>
+    public ShaderParam[] FragmentParams { get; set; } = [];
+
+    /// <summary><c>group(2)</c> の追加テクスチャスロットの記述</summary>
     public ShaderTextureSlot[] TextureSlots { get; set; } = [];
-
-    /// <summary>シェーダが <c>group(1)</c> で拾う、世界の共有値の記述</summary>
-    /// <remarks>値は <see cref="ShaderGlobals"/> から名前で対応付ける。</remarks>
-    public ShaderParam[] Globals { get; set; } = [];
-
-    /// <summary><c>//! blend:</c> の指定</summary>
-    public ShaderBlendMode Blend { get; set; }
-
-    /// <summary><c>//! render:</c> の指定</summary>
-    public ShaderRenderMode Render { get; set; }
-
-    /// <summary><c>//! queue:</c> の解決済み描画キュー番号</summary>
-    /// <remarks>0 は未指定を表す（利用側が自分の既定を採る）。<see cref="ShaderRenderQueue"/> が名前付きの値を持つ</remarks>
-    public int Queue { get; set; }
-
-    /// <summary><c>//! zwrite:</c> の指定</summary>
-    public ShaderDepthWrite DepthWrite { get; set; }
-
-    /// <summary><c>//! ztest:</c> の指定</summary>
-    public ShaderDepthCompare DepthCompare { get; set; }
 }
 
-/// <summary>シェーダ未指定のコンポーネントが使う、同梱の既定シェーダのアセットキー</summary>
+/// <summary>コンポーネント種別ごとの、同梱の既定の頂点シェーダのアセットキー</summary>
 /// <remarks>実体は EmptyEngine.WebGpu.Editor が同梱するソースアセット（<c>assets/*.wgsl</c>）。その <c>.meta</c> の guid と、props の <c>DistributionRoot</c> に同じ値を書く。</remarks>
 public static class BuiltinShaders
 {
     public const string Sprite = "d73a34965e56402c81ae33d70b969657";
     public const string Mesh = "84e640fe39354467b69a0ac4fa6d9e4b";
     public const string Line = "7709483a8f3f41f99e7760f4c56f7777";
+    public const string Effect = "796e4bab36074477a12773b3be36a84f";
 }
 
-/// <summary>シェーダが要求するブレンド</summary>
-/// <remarks><c>Unspecified</c> はブレンド方法を指定しないことを表す。値はアセットの保存形式に含まれる。</remarks>
-public enum ShaderBlendMode
+/// <summary><c>vs_main</c> が受け取る頂点属性 1 つ分の記述</summary>
+public sealed class ShaderVertexInput
 {
-    /// <summary>指定なし</summary>
-    Unspecified = 0,
+    /// <summary><c>@location</c> の番号</summary>
+    public int Location { get; set; }
 
-    /// <summary>通常のアルファ合成</summary>
-    Alpha = 1,
-
-    /// <summary>画面の色を反転する合成</summary>
-    Invert = 2,
-
-    /// <summary>描画先のアルファが 0 の場所にだけ出る合成</summary>
-    DstAlphaMask = 3,
-}
-
-/// <summary>シェーダが不透明・半透明のどちらとして描かれることを想定しているか</summary>
-/// <remarks>値はアセットの保存形式に含まれる。</remarks>
-public enum ShaderRenderMode
-{
-    /// <summary>指定なし</summary>
-    Unspecified = 0,
-
-    /// <summary>不透明</summary>
-    Opaque = 1,
-
-    /// <summary>半透明</summary>
-    Transparent = 2,
-}
-
-/// <summary>シェーダが要求する深度バッファへの書き込み</summary>
-/// <remarks>値はアセットの保存形式に含まれる。</remarks>
-public enum ShaderDepthWrite
-{
-    /// <summary>指定なし</summary>
-    Unspecified = 0,
-
-    /// <summary>書き込む</summary>
-    On = 1,
-
-    /// <summary>書き込まない</summary>
-    Off = 2,
-}
-
-/// <summary>シェーダが要求する深度比較</summary>
-/// <remarks>プラットフォームに依存しない深度比較の指定。</remarks>
-public enum ShaderDepthCompare
-{
-    /// <summary>指定なし</summary>
-    Unspecified = 0,
-
-    /// <summary>手前と同じ深度まで通す</summary>
-    LessEqual = 1,
-
-    /// <summary>手前だけ通す</summary>
-    Less = 2,
-
-    /// <summary>深度によらず通す</summary>
-    Always = 3,
+    /// <summary>空白を除いた WGSL の型名（<c>vec3&lt;f32&gt;</c> など）</summary>
+    public string Type { get; set; } = string.Empty;
 }
 
 /// <summary>シェーダのユーザ定義パラメータ 1 つ分の記述</summary>
@@ -148,7 +89,7 @@ public sealed class ShaderTextureSlot
     /// <summary>スロット名</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>WGSL 宣言の binding 番号（4 以降）</summary>
+    /// <summary>WGSL 宣言の binding 番号（2 以降）</summary>
     public int Binding { get; set; }
 }
 

@@ -1,0 +1,103 @@
+@using System.Text.Json
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject AssetCatalog Catalog
+
+<div class="inspector-section">Preview</div>
+<canvas @ref="_canvas" width="@Size" height="@Size" style="width: @(Size)px; height: @(Size)px; display: block;"></canvas>
+@if (_result?.Error is { } error)
+{
+    <div class="authoring-missing" style="white-space: pre-wrap;">@error</div>
+    @if (_ownVertex)
+    {
+        <div class="inspector-section" style="font-weight: normal;">This shader has its own vs_main. The preview draws with a stand-in vertex shader that writes the bundled varyings (uv, color, view depth, normal), so a fragment shader that takes other inputs cannot be shown.</div>
+    }
+}
+else if (_result is { StandIn: true })
+{
+    <div class="inspector-section" style="font-weight: normal;">This shader reads values a component supplies (group 0). The preview passes 1 for each, and the shader's defaults for the component's Params.</div>
+}
+
+@code {
+    private const int Size = 192;
+    private const string ModulePath = "/_content/EmptyEngine.WebGpu.Editor/materialPreview.js";
+
+    /// <summary>描くマテリアル</summary>
+    [Parameter, EditorRequired] public AuthoringObjectViewModel Material { get; set; } = null!;
+
+    private ElementReference _canvas;
+    private IJSObjectReference? _module;
+    private string? _drawn;
+    private MaterialPreviewResult? _result;
+    private bool _ownVertex;
+    private bool _drawing;
+    private bool _disposed;
+
+    // 親が描き直すたびに来る。値が変わっていた時だけ描く。
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_drawing || _disposed) return;
+
+        _drawing = true;
+        try
+        {
+            while (!_disposed)
+            {
+                MaterialPreviewSpec spec = MaterialPreviewSpec.Build(Material, key => Catalog.GetAsset(key.Value));
+                string signature = JsonSerializer.Serialize(spec);
+                if (signature == _drawn) break;
+
+                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", ModulePath);
+                await UploadTexturesAsync(spec);
+                MaterialPreviewResult result = await _module.InvokeAsync<MaterialPreviewResult>("render", _canvas, spec);
+                _drawn = signature;
+                if (result != _result || spec.OwnVertex != _ownVertex)
+                {
+                    _result = result;
+                    _ownVertex = spec.OwnVertex;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (Exception error) when (error is JSDisconnectedException or OperationCanceledException or ObjectDisposedException)
+        {
+            // 画面が閉じられた。
+        }
+        finally
+        {
+            _drawing = false;
+        }
+    }
+
+    private async Task UploadTexturesAsync(MaterialPreviewSpec spec)
+    {
+        string[] keys = spec.Textures.Select(texture => texture.Key).Append(spec.MainTexture)
+            .Where(key => key.Length > 0).Distinct().ToArray();
+        if (keys.Length == 0) return;
+
+        IJSObjectReference module = _module!;
+        foreach (string key in await module.InvokeAsync<string[]>("missingTextures", (object)keys))
+        {
+            AuthoringObject? texture = Catalog.GetAsset(key);
+            if (await Task.Run(() => MaterialPreviewSpec.ReadPixels(texture)) is not { } read) continue;
+
+            using var stream = new DotNetStreamReference(new MemoryStream(read.Pixels));
+            await module.InvokeVoidAsync("uploadTexture", key, read.Width, read.Height, stream);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_module is null) return;
+
+        try
+        {
+            await _module.InvokeVoidAsync("release", _canvas);
+            await _module.DisposeAsync();
+        }
+        catch (Exception error) when (error is JSDisconnectedException or OperationCanceledException or ObjectDisposedException)
+        {
+        }
+    }
+}

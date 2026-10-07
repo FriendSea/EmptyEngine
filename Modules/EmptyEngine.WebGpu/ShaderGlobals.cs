@@ -3,80 +3,43 @@ using GraphicsColor = EmptyEngine.Graphics.Color;
 
 namespace EmptyEngine.WebGpu;
 
-/// <summary>シェーダが名前で拾う、世界で共有する値</summary>
+/// <summary>シェーダが番号で拾う、世界で共有する値</summary>
 /// <remarks>
-/// シェーダ側は <c>@group(1) @binding(0)</c> の uniform 構造体に、必要なメンバだけを好きな順で宣言する。
-/// 値はメンバ名で対応付けるので、宣言の並びを世界側と揃える必要は無い。設定の無い名前は WGSL の
-/// <c>// default</c> 値になる。
+/// シェーダ側は <c>@group(1) @binding(番号)</c> に、変数を 1 つずつ宣言する
+/// （<c>f32</c>・<c>vec2&lt;f32&gt;</c>・<c>vec3&lt;f32&gt;</c>・<c>vec4&lt;f32&gt;</c> のいずれか）。
+/// 対応付けは番号だけで、変数名は問わない。設定の無い番号は 0。
 /// </remarks>
 public sealed class ShaderGlobals
 {
-    private readonly Dictionary<string, Vector4> _values = new(StringComparer.Ordinal);
+    /// <summary>使える番号の数（0 から <c>SlotCount - 1</c>）</summary>
+    /// <remarks>1 ステージが束ねられる uniform buffer は 12 個で、うち 3 個をコンポーネントとマテリアルが使う。</remarks>
+    public const int SlotCount = 8;
+
+    private readonly Vector4[] _values = new Vector4[SlotCount];
 
     /// <summary>いずれかの値が変わるたびに進む版数</summary>
     public int Version { get; private set; }
 
-    /// <summary><c>f32</c> メンバへ渡す値の設定</summary>
-    public void SetFloat(string name, float value) => Set(name, new Vector4(value, 0f, 0f, 0f));
+    /// <summary><c>f32</c> として読む値の設定</summary>
+    public void SetFloat(int slot, float value) => SetVector(slot, new Vector4(value, 0f, 0f, 0f));
 
-    /// <summary><c>vec4&lt;f32&gt;</c> メンバへ渡す色の設定</summary>
-    public void SetColor(string name, GraphicsColor value) => Set(name, value);
+    /// <summary><c>vec4&lt;f32&gt;</c> として読む色の設定</summary>
+    public void SetColor(int slot, GraphicsColor value) => SetVector(slot, value);
 
-    /// <summary>設定済みの <c>f32</c> 値</summary>
-    public bool TryGetFloat(string name, out float value)
+    /// <summary>ベクトル値の設定</summary>
+    public void SetVector(int slot, Vector4 value)
     {
-        bool found = _values.TryGetValue(name, out Vector4 stored);
-        value = found ? stored.X : 0f;
-        return found;
-    }
-
-    /// <summary>設定済みの色</summary>
-    public bool TryGetColor(string name, out GraphicsColor value)
-    {
-        bool found = _values.TryGetValue(name, out Vector4 stored);
-        value = found ? stored : default;
-        return found;
-    }
-
-    /// <summary>設定の取り消し（シェーダ宣言の既定値へ戻る）</summary>
-    public bool Remove(string name)
-    {
-        if (!_values.Remove(name)) return false;
-        Version++;
-        return true;
-    }
-
-    private void Set(string name, Vector4 value)
-    {
-        if (_values.TryGetValue(name, out Vector4 current) && current == value) return;
-        _values[name] = value;
+        if (_values[slot] == value) return;
+        _values[slot] = value;
         Version++;
     }
 
-    /// <summary>シェーダの宣言に合わせた値の詰め直し</summary>
-    /// <remarks>設定の無い名前は宣言の既定値で埋める。</remarks>
-    internal void Pack(ShaderParam[] declarations, Span<float> destination)
-    {
-        destination.Clear();
-        Span<float> components = stackalloc float[4];
-        for (int i = 0; i < declarations.Length; i++)
-        {
-            ShaderParam declaration = declarations[i];
-            int count = ShaderParamsHost.ComponentCount(declaration);
-            int offset = ShaderParamsHost.ValueOffset(declarations, i);
-            if (offset + count > destination.Length) break;
+    /// <summary>設定済みの値（未設定は 0）</summary>
+    public Vector4 GetVector(int slot) => _values[slot];
 
-            if (_values.TryGetValue(declaration.Name, out Vector4 value))
-            {
-                value.CopyTo(components);
-            }
-            else
-            {
-                for (int component = 0; component < count; component++)
-                    components[component] = ShaderParamsHost.DefaultAt(declaration, component);
-            }
+    /// <summary>設定の取り消し（0 へ戻る）</summary>
+    public void Clear(int slot) => SetVector(slot, Vector4.Zero);
 
-            components[..count].CopyTo(destination.Slice(offset, count));
-        }
-    }
+    /// <summary>番号順に並べた全部の値</summary>
+    internal ReadOnlySpan<Vector4> Values => _values;
 }

@@ -16,14 +16,12 @@ public sealed class ShaderImporter(ISchemaSource schemas) : IAssetImporter
         var asset = new ShaderAsset
         {
             Source = new FileAssetBinary(request.SourcePath),
-            Params = WgslShaderParams.Parse(wgsl),
+            HasVertex = WgslShaderParams.HasVertexEntry(wgsl),
+            HasFragment = WgslShaderParams.HasFragmentEntry(wgsl),
+            VertexInputs = WgslShaderParams.ParseVertexInputs(wgsl),
+            VertexParams = WgslShaderParams.ParseVertexParams(wgsl),
+            FragmentParams = WgslShaderParams.ParseFragmentParams(wgsl),
             TextureSlots = WgslShaderParams.ParseTextureSlots(wgsl),
-            Globals = WgslShaderParams.ParseGlobals(wgsl),
-            Blend = WgslShaderDirectives.ParseBlend(wgsl),
-            Render = WgslShaderDirectives.ParseRender(wgsl),
-            Queue = WgslShaderDirectives.ParseQueue(wgsl),
-            DepthWrite = WgslShaderDirectives.ParseDepthWrite(wgsl),
-            DepthCompare = WgslShaderDirectives.ParseDepthCompare(wgsl),
         };
 
         var imported = new ImportedAsset(request.RelativePath, ImporterUtils.FromClr(asset, schemas), request.SourcePath);

@@ -177,7 +177,7 @@ public static unsafe class SpriteRenderSupport
         return WGPU.wgpuDeviceCreateBindGroupLayout(context.Device, &descriptor);
     }
 
-    /// <summary>group(0) と、シェーダ宣言があれば group(1) を並べたパイプラインレイアウトの生成</summary>
+    /// <summary>group(0) と、指定があれば group(1)（<see cref="RenderContext.GlobalsLayout"/>）を並べたパイプラインレイアウトの生成</summary>
     public static PipelineLayout* CreatePipelineLayout(
         in RenderContext context, BindGroupLayout* bindGroupLayout, BindGroupLayout* globalsLayout)
     {
@@ -298,16 +298,6 @@ public static unsafe class SpriteRenderSupport
         return WGPU.wgpuDeviceCreateBindGroup(context.Device, &descriptor);
     }
 
-    /// <summary>シェーダが宣言したグローバル値も結んだうえでの quad の描画</summary>
-    public static void DrawQuad(
-        in RenderContext context, RenderPipeline* pipeline, BindGroup* bindGroup, ShaderGlobalsBinding globals)
-    {
-        WGPU.wgpuRenderPassEncoderSetPipeline(context.Pass, pipeline);
-        WGPU.wgpuRenderPassEncoderSetBindGroup(context.Pass, 0, bindGroup, 0, null);
-        globals.Bind(in context);
-        DrawQuadVertices(in context);
-    }
-
     /// <summary>共有 quad 頂点バッファでの 1 枚の quad の描画</summary>
     public static void DrawQuad(in RenderContext context, RenderPipeline* pipeline, BindGroup* bindGroup)
     {
@@ -316,7 +306,7 @@ public static unsafe class SpriteRenderSupport
         DrawQuadVertices(in context);
     }
 
-    private static void DrawQuadVertices(in RenderContext context)
+    public static void DrawQuadVertices(in RenderContext context)
     {
         WGPU.wgpuRenderPassEncoderSetVertexBuffer(
             context.Pass,

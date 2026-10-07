@@ -1,0 +1,69 @@
+@attribute [InspectorFor(MaterialAssetTypeId)]
+@inherits AuthoringInspectorBase
+@inject AssetCatalog Catalog
+
+@foreach (FieldViewModel field in PlainFields(Authoring))
+{
+    <FieldEditor @key="field" Field="field" />
+}
+
+@if (_parameters.Length > 0)
+{
+    <div class="inspector-section">Parameters</div>
+    @foreach (FieldViewModel field in _parameters)
+    {
+        <FieldEditor @key="field" Field="field" />
+    }
+}
+
+@if (_textures.Length > 0)
+{
+    <div class="inspector-section">Textures</div>
+    @foreach (FieldViewModel field in _textures)
+    {
+        <FieldEditor @key="field" Field="field" />
+    }
+}
+
+<MaterialPreview Material="Authoring" />
+
+@code {
+    /// <summary>このインスペクタが受け持つアセットの型</summary>
+    internal const string MaterialAssetTypeId = "EmptyEngine.WebGpu.MaterialAsset";
+
+    private const string FragmentParamsField = "FragmentParams";
+
+    private FieldViewModel[] _parameters = [];
+    private FieldViewModel[] _textures = [];
+
+    protected override void OnAuthoringBound()
+    {
+        ObserveCollection(Authoring.Fields);
+        Rebuild();
+    }
+
+    // シェーダ変更で欄の数や型も変わるため、欄を組み直す。
+    protected override void OnAuthoringRefreshed() => Rebuild();
+
+    private void Rebuild() =>
+        (_parameters, _textures) = BuildFields(Authoring, reference => Catalog.GetAsset(reference.Value));
+
+    /// <summary>シェーダ由来ではない、そのまま並べる編集欄（シェーダ参照と描画状態）</summary>
+    internal static IEnumerable<FieldViewModel> PlainFields(AuthoringObjectViewModel material) =>
+        material.Fields.Snapshot.Where(field =>
+            field.Name is not (ShaderFieldEditors.ParamsField or ShaderFieldEditors.TexturesField));
+
+    /// <summary>その時点のシェーダが宣言する、マテリアル側のパラメータと追加テクスチャの編集欄</summary>
+    /// <remarks>編集対象が差し替わった後も <paramref name="material"/> の現在の値へ書き込む。</remarks>
+    internal static (FieldViewModel[] Parameters, FieldViewModel[] Textures) BuildFields(
+        AuthoringObjectViewModel material,
+        Func<AssetKey, AuthoringObject?> tryGetAssetValue)
+    {
+        AuthoringObject? shader = ShaderFieldEditors.ResolveShader(
+            material.Root.Get(ShaderFieldEditors.ShaderField)?.AssetKey, tryGetAssetValue);
+
+        return (
+            ShaderFieldEditors.BuildParams(material, ShaderFieldEditors.ReadParams(shader, FragmentParamsField)),
+            ShaderFieldEditors.BuildTextureSlots(material, ShaderFieldEditors.ReadTextureSlots(shader)));
+    }
+}
