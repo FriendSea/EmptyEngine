@@ -27,14 +27,23 @@ internal static class Program
         [Range(0, 65535)] int uiPort = 0,
         bool noBrowser = false)
     {
-        await using var session = new HostSession(manifest, configuration, uiPort, noBrowser);
-        if (!await session.StartAsync())
+        var session = new HostSession(manifest, configuration, uiPort, noBrowser);
+        var commands = new ConsoleCommands(session);
+        try
         {
-            return 1;
-        }
+            if (!await session.StartAsync())
+            {
+                return 1;
+            }
 
-        await new ConsoleCommands(session).RunUntilQuitAsync();
-        return 0;
+            await commands.RunUntilQuitAsync();
+            return 0;
+        }
+        finally
+        {
+            await session.DisposeAsync();
+            commands.NotifyStopped();
+        }
     }
 
     /// <summary>Create a distribution build (headless).</summary>

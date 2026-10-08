@@ -23,7 +23,8 @@ internal sealed class HostSession : IAsyncDisposable
     private readonly HostConsole _console;
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly Lock _ledgerGate = new();
+    private ChildProcessJob? _childJob;
+    private ChildProcessLedger? _childLedger;
 
     private EmptyEngineProject? _project;
     private EditorRuntimeHub? _hub;
@@ -213,7 +214,6 @@ internal sealed class HostSession : IAsyncDisposable
 
         string editorProject = Path.GetFullPath(ResolveEditorProjectPath());
         string artifactsPath = EditorProjectGenerator.ResolveEditorArtifactsPath(RequireProject(), "editor-watch");
-        StopExistingByName(GetProjectName(editorProject));
 
         var editorEnv = new Dictionary<string, string>();
         AddWatchEnvironment(editorEnv);
@@ -311,7 +311,7 @@ internal sealed class HostSession : IAsyncDisposable
             }
         }
 
-        Process process = Process.Start(startInfo) ?? throw new InvalidOperationException($"Failed to start {failureDescription}");
+        (Process process, StreamReader output, StreamReader error) = StartBoundToHostLifetime(startInfo, label, failureDescription);
         process.EnableRaisingEvents = true;
         process.Exited += (_, _) =>
         {
@@ -320,118 +320,48 @@ internal sealed class HostSession : IAsyncDisposable
             PublishStatus();
         };
 
-        _ = PipeProcessOutputAsync(process, label, onLine);
+        _ = PipeProcessOutputAsync(output, error, label, onLine);
         AppendLog($"[Host] Started {label} watcher PID={process.Id}");
-        RecordChild(process, label);
         return process;
     }
 
-    /// <summary>この Host が起動した子プロセスの記録先</summary>
-    private string ChildLedgerPath =>
-        Path.Combine(RequireProject().ProjectDirectory, ".artifacts", "host-children.txt");
-
-    private void RecordChild(Process process, string label)
+    /// <summary>Host が後始末なしに死んでも子のツリーが残らない形での起動</summary>
+    private (Process Process, StreamReader Output, StreamReader Error) StartBoundToHostLifetime(
+        ProcessStartInfo startInfo, string label, string failureDescription)
     {
-        if (_project is null)
+        if (OperatingSystem.IsWindows())
         {
-            return;
+            try
+            {
+                _childJob ??= new ChildProcessJob();
+                return _childJob.Start(startInfo);
+            }
+            catch (Exception ex)
+            {
+                // 縛れなくても起動は試みる。その子は下で控えに回す。
+                AppendLog($"[Host] Could not start the {label} watcher bound to the Host lifetime ({ex.Message}). Starting it unbound.", HostLogSeverity.Warning);
+            }
         }
 
+        Process process = Process.Start(startInfo) ?? throw new InvalidOperationException($"Failed to start {failureDescription}");
         try
         {
-            // PID は使い回されるので、開始時刻を添えて「同じ PID の別物」と区別できるようにする。
-            string line = $"{process.Id} {process.StartTime.ToUniversalTime().Ticks} {label}";
-            string path = ChildLedgerPath;
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            lock (_ledgerGate)
-            {
-                File.AppendAllText(path, line + Environment.NewLine);
-            }
+            // OS に縛らせていない子は控えておき、次回起動時に残りを片付ける。
+            ChildLedger().Record(process);
         }
         catch (Exception ex)
         {
-            AppendLog($"[Host] Failed to record child process: {ex.Message}", HostLogSeverity.Warning);
+            AppendLog($"[Host] Could not record the {label} watcher for cleanup: {ex.Message}", HostLogSeverity.Warning);
         }
+
+        return (process, process.StandardOutput, process.StandardError);
     }
 
-    /// <summary>前回の Host が記録した子プロセスのうち、残存するものを終了する</summary>
-    private void KillLedgeredChildren()
-    {
-        string path = ChildLedgerPath;
-        string[] lines;
-        try
-        {
-            lines = File.Exists(path) ? File.ReadAllLines(path) : [];
-        }
-        catch (IOException ex)
-        {
-            AppendLog($"[Host] Child ledger read warning: {ex.Message}", HostLogSeverity.Warning);
-            return;
-        }
-
-        foreach (string line in lines)
-        {
-            if (!TryParseLedgerLine(line, out int pid, out long startTicks, out string label))
-            {
-                continue;
-            }
-
-            if (!IsSameProcess(pid, startTicks))
-            {
-                continue;
-            }
-
-            AppendLog($"[Host] Cleaning up orphaned {label} watcher PID={pid}");
-            KillTree(pid);
-        }
-
-        try
-        {
-            File.Delete(path);
-        }
-        catch (IOException ex)
-        {
-            AppendLog($"[Host] Child ledger reset warning: {ex.Message}", HostLogSeverity.Warning);
-        }
-    }
-
-    /// <summary>台帳の 1 行の読み取り</summary>
-    internal static bool TryParseLedgerLine(string line, out int pid, out long startTicks, out string label)
-    {
-        pid = 0;
-        startTicks = 0;
-        label = string.Empty;
-
-        string[] parts = line.Trim().Split(' ', 3, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2 || !int.TryParse(parts[0], out pid) || !long.TryParse(parts[1], out startTicks))
-        {
-            return false;
-        }
-
-        label = parts.Length > 2 ? parts[2] : "child";
-        return pid != Environment.ProcessId;
-    }
-
-    /// <summary>その PID が控えたときと同じプロセスのままか</summary>
-    private static bool IsSameProcess(int pid, long startTicks)
-    {
-        try
-        {
-            using Process process = Process.GetProcessById(pid);
-            return !process.HasExited && process.StartTime.ToUniversalTime().Ticks == startTicks;
-        }
-        catch (Exception)
-        {
-            // 居ない（ArgumentException）／覗けない（Win32Exception）はどちらも「殺す相手ではない」。
-            return false;
-        }
-    }
-
-    private async Task PipeProcessOutputAsync(Process process, string label, Action<string>? onLine)
+    private async Task PipeProcessOutputAsync(StreamReader output, StreamReader error, string label, Action<string>? onLine)
     {
         await Task.WhenAll(
-            Task.Run(() => DrainAsync(process.StandardOutput, label, onLine)),
-            Task.Run(() => DrainAsync(process.StandardError, label, onLine)));
+            Task.Run(() => DrainAsync(output, label, onLine)),
+            Task.Run(() => DrainAsync(error, label, onLine)));
     }
 
     private async Task DrainAsync(StreamReader reader, string label, Action<string>? onLine)
@@ -460,33 +390,6 @@ internal sealed class HostSession : IAsyncDisposable
         return process is { HasExited: false };
     }
 
-    private static void StopExistingByName(string processName)
-    {
-        if (string.IsNullOrWhiteSpace(processName))
-        {
-            return;
-        }
-
-        foreach (Process process in Process.GetProcessesByName(processName))
-        {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                    process.WaitForExit(5000);
-                }
-            }
-            catch
-            {
-            }
-            finally
-            {
-                process.Dispose();
-            }
-        }
-    }
-
     private async Task EnsureNoStaleProcessesAsync()
     {
         if (_project is null)
@@ -495,14 +398,28 @@ internal sealed class HostSession : IAsyncDisposable
         }
 
         KillLedgeredChildren();
-        // 同名でも単体起動のランタイムはこの Host の所有物ではない。台帳の子だけを回収する。
-        StopExistingByName(GetProjectName(ResolveEditorProjectPath()));
         await KillStaleWatchersAsync();
     }
 
-    private static string GetProjectName(string? projectPath)
+    private ChildProcessLedger ChildLedger() =>
+        _childLedger ??= new ChildProcessLedger(
+            Path.Combine(RequireProject().ProjectDirectory, ".artifacts", "host-children.txt"));
+
+    /// <summary>前回の Host が後始末なしに死んで残した子の片付け。管理中の子が居ないときにだけ呼ぶ</summary>
+    private void KillLedgeredChildren()
     {
-        return string.IsNullOrWhiteSpace(projectPath) ? string.Empty : Path.GetFileNameWithoutExtension(projectPath);
+        try
+        {
+            IReadOnlyList<int> killed = ChildLedger().KillSurvivors();
+            if (killed.Count > 0)
+            {
+                AppendLog($"[Host] Cleaned up {killed.Count} watcher(s) left by a previous Host: {string.Join(", ", killed)}");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[Host] Leftover watcher cleanup warning: {ex.Message}", HostLogSeverity.Warning);
+        }
     }
 
     private async Task KillStaleWatchersAsync()

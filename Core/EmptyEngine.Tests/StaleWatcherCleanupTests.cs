@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using EmptyEngine.Host;
 using Xunit;
 
@@ -28,7 +29,6 @@ public class StaleWatcherCleanupTests
         Assert.Equal(new[] { 2241, 2243, 2297 }, pids);
     }
 
-    /// <summary>ランタイムを対象にしないこと</summary>
     /// <summary>別プロジェクトの watch を対象にしないこと</summary>
     [Fact]
     public void IgnoresWatchersOfAnotherProject()
@@ -57,33 +57,122 @@ public class StaleWatcherCleanupTests
         Assert.Equal(new[] { 1234, 5678 }, pids);
     }
 
-    /// <summary>台帳の行からの PID・開始時刻・ラベルの取り出し</summary>
+    /// <summary>ジョブを閉じると、子が起こした孫まで落ちること</summary>
     [Fact]
-    public void ReadsPidStartTimeAndLabelFromTheLedger()
+    public void ClosingTheJobKillsGrandchildrenToo()
     {
-        Assert.True(HostSession.TryParseLedgerLine("2301 638912345678901234 Runtime", out int pid, out long ticks, out string label));
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
 
-        Assert.Equal(2301, pid);
-        Assert.Equal(638912345678901234, ticks);
-        Assert.Equal("Runtime", label);
+        // 子は起動してすぐ孫を起こし、その PID と渡された環境変数を 1 行ずつ出して居座る
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "powershell",
+            Arguments = "-NoProfile -NonInteractive -Command \"(Start-Process ping -ArgumentList '-n 60 127.0.0.1' -NoNewWindow -RedirectStandardOutput NUL -PassThru).Id; $env:HOST_JOB_TEST; Start-Sleep 60\"",
+            WorkingDirectory = Path.GetTempPath(),
+        };
+        startInfo.Environment["HOST_JOB_TEST"] = "passed through";
+
+        var job = new ChildProcessJob();
+        (Process child, StreamReader output, StreamReader _) = job.Start(startInfo);
+        try
+        {
+            int grandchildPid = int.Parse(output.ReadLine()!);
+            Assert.Equal("passed through", output.ReadLine());
+            using Process grandchild = Process.GetProcessById(grandchildPid);
+            Assert.False(child.HasExited);
+            Assert.False(grandchild.HasExited);
+
+            job.Dispose();
+
+            Assert.True(child.WaitForExit(5000));
+            Assert.True(grandchild.WaitForExit(5000));
+            // Host は終了の知らせで終了コードを読むので、読めること自体を見る（値は OS 任せ）
+            Assert.Null(Record.Exception(() => child.ExitCode));
+        }
+        finally
+        {
+            job.Dispose();
+            child.Dispose();
+        }
     }
 
-    /// <summary>形の合わない行を読み飛ばすこと</summary>
-    [Theory]
-    [InlineData("")]
-    [InlineData("2301")]
-    [InlineData("Runtime 638912345678901234")]
-    [InlineData("2301 not-a-timestamp Runtime")]
-    public void SkipsLedgerLinesItCannotRead(string line)
+    private static readonly DateTime Started= new(2026, 10, 8, 3, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>PID と開始時刻が一致する控えだけを選ぶこと</summary>
+    [Fact]
+    public void PicksLedgeredProcessesThatAreStillTheSameProcess()
     {
-        Assert.False(HostSession.TryParseLedgerLine(line, out _, out _, out _));
+        string[] ledger =
+        [
+            ChildProcessLedger.FormatLine(1234, Started),
+            ChildProcessLedger.FormatLine(5678, Started),
+            ChildProcessLedger.FormatLine(9012, Started),
+        ];
+
+        // 1234 はそのまま、5678 は PID を別のプロセスが使い回している、9012 はもう居ない
+        List<int> survivors = ChildProcessLedger.SelectSurvivors(ledger, pid => pid switch
+        {
+            1234 => Started.AddMilliseconds(300),
+            5678 => Started.AddMinutes(10),
+            _ => null,
+        });
+
+        Assert.Equal(new[] { 1234 }, survivors);
     }
 
-    /// <summary>自分自身を台帳から拾わないこと</summary>
+    /// <summary>読めない行を飛ばすこと</summary>
+    [Fact]
+    public void SkipsLedgerLinesItCannotRead()
+    {
+        string[] ledger = ["", "abc 1", "1234", "1234 -5", $"1234 {Started.Ticks} extra", ChildProcessLedger.FormatLine(42, Started)];
+
+        Assert.Equal(new[] { 42 }, ChildProcessLedger.SelectSurvivors(ledger, _ => Started));
+    }
+
+    /// <summary>控えに自分自身が載っていても対象にしないこと</summary>
     [Fact]
     public void NeverPicksItselfFromTheLedger()
     {
-        Assert.False(HostSession.TryParseLedgerLine(
-            $"{Environment.ProcessId} 638912345678901234 Runtime", out _, out _, out _));
+        string[] ledger = [ChildProcessLedger.FormatLine(Environment.ProcessId, Started)];
+
+        Assert.Empty(ChildProcessLedger.SelectSurvivors(ledger, _ => Started));
+    }
+
+    /// <summary>控えた子を次の起動で落とし、控えを消すこと</summary>
+    [Fact]
+    public void KillsARecordedChildAndClearsTheLedger()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"host-children-{Guid.NewGuid():N}", "ledger.txt");
+        using Process child = Process.Start(new ProcessStartInfo
+        {
+            FileName = OperatingSystem.IsWindows() ? "ping" : "sleep",
+            Arguments = OperatingSystem.IsWindows() ? "-n 60 127.0.0.1" : "60",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            CreateNoWindow = true,
+        })!;
+        try
+        {
+            new ChildProcessLedger(path).Record(child);
+
+            // 別の Host が起動し直した体で、新しいインスタンスから読む
+            IReadOnlyList<int> killed = new ChildProcessLedger(path).KillSurvivors();
+
+            Assert.Equal(new[] { child.Id }, killed);
+            Assert.True(child.WaitForExit(5000));
+            Assert.False(File.Exists(path));
+        }
+        finally
+        {
+            if (!child.HasExited)
+            {
+                child.Kill();
+            }
+
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
     }
 }
