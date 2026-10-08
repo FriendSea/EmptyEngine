@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace EmptyEngine.Host;
 
 /// <summary>キー 1 打での Host の操作</summary>
@@ -9,6 +11,9 @@ internal sealed class ConsoleCommands
     private readonly TaskCompletionSource _quit = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _gate = new();
 
+    private readonly ManualResetEventSlim _stopped = new();
+    private readonly List<PosixSignalRegistration> _terminations = [];
+
     private bool _confirming;
 
     public ConsoleCommands(HostSession session) => _session = session;
@@ -17,6 +22,9 @@ internal sealed class ConsoleCommands
     public async Task RunUntilQuitAsync()
     {
         Console.CancelKeyPress += OnCancelKeyPress;
+        // 端末が閉じられた（SIGHUP／Windows のコンソールを閉じる通知）・止められた（SIGTERM）ときは確認なしで畳む。
+        _terminations.Add(PosixSignalRegistration.Create(PosixSignal.SIGHUP, OnTermination));
+        _terminations.Add(PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnTermination));
 
         var reader = new Thread(ReadLoop) { IsBackground = true, Name = "host-console-input" };
         reader.Start();
@@ -29,6 +37,26 @@ internal sealed class ConsoleCommands
         {
             Console.CancelKeyPress -= OnCancelKeyPress;
         }
+    }
+
+    /// <summary>子プロセスの後始末が済んだことの知らせ</summary>
+    public void NotifyStopped()
+    {
+        _stopped.Set();
+        foreach (PosixSignalRegistration registration in _terminations)
+        {
+            registration.Dispose();
+        }
+
+        _terminations.Clear();
+    }
+
+    private void OnTermination(PosixSignalContext context)
+    {
+        context.Cancel = true;
+        _quit.TrySetResult();
+        // Windows はこのハンドラが返った時点でプロセスを落とすので、後始末が済むまで返さない。
+        _stopped.Wait(TimeSpan.FromSeconds(30));
     }
 
     private void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
